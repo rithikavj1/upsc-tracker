@@ -1,0 +1,55 @@
+:root {
+  --bg: #0D0F14;
+  --surface: #14171F;
+  --surface2: #1C2030;
+  --border: rgba(255,255,255,0.07);
+  --border2: rgba(255,255,255,0.12);
+  --purple: #7C6FFF;
+  --purple-dim: rgba(124,111,255,0.15);
+  --teal: #2DD4BF;
+  --teal-dim: rgba(45,212,191,0.12);
+  --amber: #F59E0B;
+  --amber-dim: rgba(245,158,11,0.12);
+  --green: #22D3A0;
+  --green-dim: rgba(34,211,160,0.12);
+  --red: #F87171;
+  --red-dim: rgba(248,113,113,0.12);
+  --text: #F1F3F9;
+  --text2: #8B91A8;
+  --text3: #555D75;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Sora', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
+a { text-decoration: none; color: inherit; }
+button { font-family: 'Sora', sans-serif; cursor: pointer; }
+input, select, textarea { font-family: 'Sora', sans-serif; }
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--surface); }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+/* Light mode */
+body.light {
+  --bg: #F4F6FB;
+  --surface: #FFFFFF;
+  --surface2: #E8ECF4;
+  --border: rgba(0,0,0,0.08);
+  --border2: rgba(0,0,0,0.15);
+  --text: #0F1117;
+  --text2: #4A5068;
+  --text3: #8B91A8;
+  --purple: #6C5FFF;
+  --purple-dim: rgba(108,95,255,0.12);
+  --teal: #0DA99A;
+  --teal-dim: rgba(13,169,154,0.12);
+  --amber: #D97706;
+  --amber-dim: rgba(217,119,6,0.12);
+  --green: #059669;
+  --green-dim: rgba(5,150,105,0.12);
+  --red: #DC2626;
+  --red-dim: rgba(220,38,38,0.12);
+}
