@@ -7,6 +7,7 @@ import MonthlyOverview from './pages/MonthlyOverview';
 import TopicHours from './pages/TopicHours';
 import Targets from './pages/Targets';
 import WeeklyTracker from './pages/WeeklyTracker';
+import SubscriptionPage from './pages/SubscriptionPage';
 
 function PrivateRoute({ children }) {
   const token = localStorage.getItem('token');
@@ -26,6 +27,7 @@ export default function App() {
           <Route path="monthly" element={<MonthlyOverview />} />
           <Route path="topics" element={<TopicHours />} />
           <Route path="targets" element={<Targets />} />
+          <Route path="subscription" element={<SubscriptionPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

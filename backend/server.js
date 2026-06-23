@@ -7,6 +7,7 @@ const sessionRoutes = require('./routes/sessions');
 const targetRoutes = require('./routes/targets');
 const overviewRoutes = require('./routes/overview');
 const weeklyRoutes = require('./routes/weekly');
+const subscriptionRoutes = require('./routes/subscription');
 
 const app = express();
 
@@ -33,6 +34,7 @@ app.use('/api/sessions', sessionRoutes);
 app.use('/api/targets', targetRoutes);
 app.use('/api/overview', overviewRoutes);
 app.use('/api/weekly', weeklyRoutes);
+app.use('/api/subscription', subscriptionRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);
