@@ -11,7 +11,19 @@ import SubscriptionPage from './pages/SubscriptionPage';
 
 function PrivateRoute({ children }) {
   const token = localStorage.getItem('token');
-  return token ? children : <Navigate to="/login" replace />;
+  if (!token) return <Navigate to="/login" replace />;
+
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const status = user.subscription_status;
+  const trialEnd = user.trial_end ? new Date(user.trial_end) : null;
+  const now = new Date();
+
+  if (status === 'trial' && trialEnd && now < trialEnd) return children;
+  if (status === 'active') return children;
+  if (window.location.pathname !== '/subscription') {
+    return <Navigate to="/subscription" replace />;
+  }
+  return children;
 }
 
 export default function App() {
