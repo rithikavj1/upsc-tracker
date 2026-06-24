@@ -46,7 +46,6 @@ router.post('/', auth, async (req, res) => {
     topic, sub_topic, resource_type, resource_name, hours, notes
   } = req.body;
   try {
-    // Save to weekly_sessions
     const result = await pool.query(
       `INSERT INTO weekly_sessions 
        (user_id, week_number, block_type, session_date, time_slot, session_name, 
@@ -57,8 +56,6 @@ router.post('/', auth, async (req, res) => {
        parseFloat(hours)||2, notes||null]
     );
 
-    // Auto-add to daily tracker as Pending
-    // Build a meaningful note from topic + sub_topic
     const autoNote = [topic, sub_topic].filter(Boolean).join(' — ') || notes || null;
 
     try {
@@ -113,15 +110,41 @@ router.put('/:id', auth, async (req, res) => {
   }
 });
 
-// PATCH toggle completed
+// PATCH toggle completed — also syncs status to daily tracker
 router.patch('/:id/complete', auth, async (req, res) => {
   try {
+    // 1. Toggle completed in weekly_sessions
     const result = await pool.query(
       `UPDATE weekly_sessions SET completed = NOT completed 
        WHERE id=$1 AND user_id=$2 RETURNING *`,
       [req.params.id, req.user.id]
     );
-    res.json(result.rows[0]);
+    const session = result.rows[0];
+
+    // 2. Sync to daily tracker — update matching study_session status
+    const newStatus = session.completed ? 'Done' : 'Pending';
+    try {
+      await pool.query(
+        `UPDATE study_sessions 
+         SET status=$1
+         WHERE user_id=$2 
+           AND date=$3 
+           AND subject=$4
+           AND (slot=$5 OR slot='Daily Entry')`,
+        [
+          newStatus,
+          req.user.id,
+          session.session_date,
+          session.subject,
+          session.time_slot || session.session_name || 'Planned',
+        ]
+      );
+      console.log(`✅ Daily tracker updated: ${session.subject} on ${session.session_date} → ${newStatus}`);
+    } catch (syncErr) {
+      console.log('⚠️ Daily sync skipped:', syncErr.message);
+    }
+
+    res.json(session);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -130,7 +153,6 @@ router.patch('/:id/complete', auth, async (req, res) => {
 // DELETE a session — also removes from daily tracker
 router.delete('/:id', auth, async (req, res) => {
   try {
-    // Get session details before deleting
     const sess = await pool.query(
       'SELECT * FROM weekly_sessions WHERE id=$1 AND user_id=$2',
       [req.params.id, req.user.id]
@@ -138,7 +160,6 @@ router.delete('/:id', auth, async (req, res) => {
 
     if (sess.rows.length > 0) {
       const s = sess.rows[0];
-      // Remove matching daily session too
       try {
         await pool.query(
           `DELETE FROM study_sessions 
@@ -161,7 +182,7 @@ router.delete('/:id', auth, async (req, res) => {
   }
 });
 
-// GET stats — subject hours breakdown for charts
+// GET stats
 router.get('/stats', auth, async (req, res) => {
   const { month, year, week } = req.query;
   try {
