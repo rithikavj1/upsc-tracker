@@ -114,17 +114,29 @@ router.patch('/:id/status', auth, async (req, res) => {
     // ── Sync to weekly_sessions ──────────────────────────────────────────────
     try {
       if (status === 'Done') {
-        // Tick ✓ in weekly tracker
-        await pool.query(
-          `UPDATE weekly_sessions SET completed=true
-           WHERE user_id=$1 AND session_date=$2 AND subject=$3
-           AND (time_slot=$4 OR time_slot='Daily Entry' OR session_name=$5)`,
-          [req.user.id, session.date, session.subject,
-           session.slot || 'Daily Entry', session.slot?.split(' ')[0] || 'Daily']
-        );
-        console.log(`✅ Weekly ticked: ${session.subject} on ${session.date}`);
+  await pool.query(
+    `UPDATE weekly_sessions SET completed=true
+     WHERE user_id=$1 AND session_date=$2 AND subject=$3`,
+    [req.user.id, session.date, session.subject]
+  );
+  console.log(`✅ Weekly ticked: ${session.subject} on ${session.date}`);
 
-      } else if (status === 'Pending') {
+} else if (status === 'Pending') {
+  await pool.query(
+    `UPDATE weekly_sessions SET completed=false
+     WHERE user_id=$1 AND session_date=$2 AND subject=$3`,
+    [req.user.id, session.date, session.subject]
+  );
+  console.log(`✅ Weekly unticked: ${session.subject} on ${session.date}`);
+
+} else if (status === 'Carry Forward') {
+  await pool.query(
+    `DELETE FROM weekly_sessions
+     WHERE user_id=$1 AND session_date=$2 AND subject=$3 AND completed=false`,
+    [req.user.id, session.date, session.subject]
+  );
+  console.log(`✅ Weekly entry removed (carry forward): ${session.subject} on ${session.date}`);
+} else if (status === 'Pending') {
         // Untick ○ in weekly tracker
         await pool.query(
           `UPDATE weekly_sessions SET completed=false
