@@ -68,7 +68,7 @@ export default function AITutor() {
       const sub = subRes.data;
       const hasYearly = sub.status === 'active' && sub.plan === 'yearly';
       // For testing — also allow active users
-      const hasAccess = sub.status === 'active' || (sub.status === 'trial' && sub.trial_days_left > 0);
+      const hasAccess = true; // Open to all users for now
       setIsYearly(hasAccess);
 
       // Load user data for context
