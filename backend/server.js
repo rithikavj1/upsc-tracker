@@ -9,6 +9,7 @@ const overviewRoutes = require('./routes/overview');
 const weeklyRoutes = require('./routes/weekly');
 const subscriptionRoutes = require('./routes/subscription');
 const habitsRoutes = require('./routes/habits');
+const aiRoutes = require('./routes/ai');
 
 const app = express();
 
@@ -37,6 +38,7 @@ app.use('/api/overview', overviewRoutes);
 app.use('/api/weekly', weeklyRoutes);
 app.use('/api/subscription', subscriptionRoutes);
 app.use('/api/habits', habitsRoutes);
+app.use('/api/ai', aiRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);

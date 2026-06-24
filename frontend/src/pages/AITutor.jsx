@@ -116,22 +116,14 @@ export default function AITutor() {
     setLoading(true);
 
     try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-haiku-4-5',
-          max_tokens: 1000,
-          system: SYSTEM_PROMPT(userData),
-          messages: newMessages
-            .filter(m => m.role === 'user' || m.role === 'assistant')
-            .map(m => ({ role: m.role, content: m.content }))
-        })
-      });
-
-      const data = await response.json();
-      const reply = data.content?.[0]?.text || 'Sorry, I could not generate a response. Please try again.';
-
+      const token = localStorage.getItem('token');
+const response = await api.post('/ai/chat', {
+  systemPrompt: SYSTEM_PROMPT(userData),
+  messages: newMessages
+    .filter(m => m.role === 'user' || m.role === 'assistant')
+    .map(m => ({ role: m.role, content: m.content }))
+});
+const reply = response.data.reply || 'Sorry, I could not generate a response. Please try again.';
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: reply,
