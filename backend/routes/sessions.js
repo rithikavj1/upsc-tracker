@@ -34,25 +34,19 @@ router.post('/', auth, async (req, res) => {
   const { date, subject, hours, slot, activity_type, notes } = req.body;
   if (!date || !subject || !hours) return res.status(400).json({ error: 'date, subject, hours required' });
   try {
-    // 1. Save to study_sessions (daily tracker table)
     const result = await pool.query(
       `INSERT INTO study_sessions (user_id, date, subject, hours, slot, activity_type, notes)
        VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
       [req.user.id, date, subject, parseFloat(hours), slot || null, activity_type || null, notes || null]
     );
 
-    // 2. Also sync to weekly_sessions so weekly tracker shows it
     try {
       const d = new Date(date);
-      const dayOfMonth = d.getDate();
-      const weekNumber = Math.ceil(dayOfMonth / 7); // week 1–4 of month
-      const dayOfWeek = d.getDay(); // 0=Sun, 6=Sat
-      const blockType = (dayOfWeek === 0 || dayOfWeek === 6) ? 'Weekend' : 'Weekday';
+      const weekNumber = Math.ceil(d.getDate() / 7);
+      const blockType = (d.getDay() === 0 || d.getDay() === 6) ? 'Weekend' : 'Weekday';
 
-      // Check if already exists in weekly_sessions (avoid duplicate if weekly tracker created it)
       const existing = await pool.query(
-        `SELECT id FROM weekly_sessions 
-         WHERE user_id=$1 AND session_date=$2 AND subject=$3 AND time_slot=$4`,
+        `SELECT id FROM weekly_sessions WHERE user_id=$1 AND session_date=$2 AND subject=$3 AND time_slot=$4`,
         [req.user.id, date, subject, slot || 'Daily Entry']
       );
 
@@ -62,30 +56,13 @@ router.post('/', auth, async (req, res) => {
            (user_id, week_number, block_type, session_date, time_slot, session_name,
             exam_type, paper, subject, module, topic, sub_topic, resource_type, resource_name, hours, notes, completed)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
-          [
-            req.user.id,
-            weekNumber,
-            blockType,
-            date,
-            slot || 'Daily Entry',
-            slot ? slot.split(' ')[0] : 'Daily', // session_name = first word of slot e.g. "Morning"
-            'Prelims',        // default exam_type
-            'GS1',            // default paper
-            subject,
-            null,             // module
-            activity_type || null,  // use activity_type as topic
-            null,             // sub_topic
-            null,             // resource_type
-            null,             // resource_name
-            parseFloat(hours),
-            notes || null,
-            false             // not completed yet
-          ]
+          [req.user.id, weekNumber, blockType, date, slot || 'Daily Entry',
+           slot ? slot.split(' ')[0] : 'Daily', 'Prelims', 'GS1', subject,
+           null, activity_type || null, null, null, null, parseFloat(hours), notes || null, false]
         );
         console.log(`✅ Daily session synced to weekly: ${subject} on ${date}`);
       }
     } catch (weeklyErr) {
-      // Don't fail the whole request if weekly sync fails
       console.log('⚠️ Weekly sync skipped:', weeklyErr.message);
     }
 
@@ -95,10 +72,9 @@ router.post('/', auth, async (req, res) => {
   }
 });
 
-// DELETE session — also removes from weekly_sessions if it was synced from daily
+// DELETE session — also removes from weekly_sessions
 router.delete('/:id', auth, async (req, res) => {
   try {
-    // Get the session details before deleting
     const sess = await pool.query(
       'SELECT * FROM study_sessions WHERE id=$1 AND user_id=$2',
       [req.params.id, req.user.id]
@@ -106,7 +82,6 @@ router.delete('/:id', auth, async (req, res) => {
 
     if (sess.rows.length > 0) {
       const s = sess.rows[0];
-      // Remove matching weekly session that was auto-synced from daily
       try {
         await pool.query(
           `DELETE FROM weekly_sessions 
@@ -126,7 +101,7 @@ router.delete('/:id', auth, async (req, res) => {
   }
 });
 
-// PATCH update session status
+// PATCH update session status — syncs to weekly_sessions
 router.patch('/:id/status', auth, async (req, res) => {
   const { status } = req.body;
   try {
@@ -136,17 +111,42 @@ router.patch('/:id/status', auth, async (req, res) => {
     );
     const session = r.rows[0];
 
-    // Sync to weekly_sessions — tick/untick based on status
+    // ── Sync to weekly_sessions ──────────────────────────────────────────────
     try {
-      const completed = status === 'Done';
-      await pool.query(
-        `UPDATE weekly_sessions 
-         SET completed=$1
-         WHERE user_id=$2 AND session_date=$3 AND subject=$4
-         AND (time_slot=$5 OR time_slot='Daily Entry' OR session_name=$5)`,
-        [completed, req.user.id, session.date, session.subject, session.slot || 'Daily Entry']
-      );
-      console.log(`✅ Weekly tracker synced: ${session.subject} on ${session.date} → ${status}`);
+      if (status === 'Done') {
+        // Tick ✓ in weekly tracker
+        await pool.query(
+          `UPDATE weekly_sessions SET completed=true
+           WHERE user_id=$1 AND session_date=$2 AND subject=$3
+           AND (time_slot=$4 OR time_slot='Daily Entry' OR session_name=$5)`,
+          [req.user.id, session.date, session.subject,
+           session.slot || 'Daily Entry', session.slot?.split(' ')[0] || 'Daily']
+        );
+        console.log(`✅ Weekly ticked: ${session.subject} on ${session.date}`);
+
+      } else if (status === 'Pending') {
+        // Untick ○ in weekly tracker
+        await pool.query(
+          `UPDATE weekly_sessions SET completed=false
+           WHERE user_id=$1 AND session_date=$2 AND subject=$3
+           AND (time_slot=$4 OR time_slot='Daily Entry' OR session_name=$5)`,
+          [req.user.id, session.date, session.subject,
+           session.slot || 'Daily Entry', session.slot?.split(' ')[0] || 'Daily']
+        );
+        console.log(`✅ Weekly unticked: ${session.subject} on ${session.date}`);
+
+      } else if (status === 'Carry Forward') {
+        // Remove old entry from weekly tracker — it's being moved to another day
+        await pool.query(
+          `DELETE FROM weekly_sessions
+           WHERE user_id=$1 AND session_date=$2 AND subject=$3
+           AND (time_slot=$4 OR time_slot='Daily Entry' OR session_name=$5)
+           AND completed=false`,
+          [req.user.id, session.date, session.subject,
+           session.slot || 'Daily Entry', session.slot?.split(' ')[0] || 'Daily']
+        );
+        console.log(`✅ Weekly entry removed (carry forward): ${session.subject} on ${session.date}`);
+      }
     } catch (syncErr) {
       console.log('⚠️ Weekly sync skipped:', syncErr.message);
     }
