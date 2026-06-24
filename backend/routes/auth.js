@@ -10,12 +10,27 @@ router.post('/register', async (req, res) => {
   try {
     const hash = await bcrypt.hash(password, 12);
     const result = await pool.query(
-      'INSERT INTO users (name, email, password_hash) VALUES ($1, $2, $3) RETURNING id, name, email',
-      [name, email, hash]
-    );
-    const user = result.rows[0];
-    const token = jwt.sign({ id: user.id, email: user.email, name: user.name }, process.env.JWT_SECRET, { expiresIn: '30d' });
-    res.json({ token, user });
+  `INSERT INTO users (name, email, password_hash)
+   VALUES ($1, $2, $3)
+   RETURNING id, name, email, subscription_status, trial_end`,
+  [name, email, hash]
+);
+const user = result.rows[0];
+const token = jwt.sign(
+  { id: user.id, email: user.email, name: user.name },
+  process.env.JWT_SECRET,
+  { expiresIn: '30d' }
+);
+res.json({
+  token,
+  user: {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    subscription_status: user.subscription_status || 'trial',
+    trial_end: user.trial_end,
+  }
+});
   } catch (err) {
     if (err.code === '23505') return res.status(400).json({ error: 'Email already registered' });
     res.status(500).json({ error: err.message });
