@@ -9,6 +9,7 @@ const navItems = [
   { path: '/topics',       label: 'Subject Hours Log', icon: '📚' },
   { path: '/targets',      label: 'Targets & Settings',icon: '🎯' },
   { path: '/habits',       label: 'Habit Tracker',     icon: '🏃' },
+  { path: '/ai-tutor', label: 'AI Tutor 🤖', icon: '🤖' },
   { path: '/subscription', label: 'Subscription',      icon: '⭐' },
 ];
 

@@ -36,7 +36,7 @@ export default function SubscriptionPage() {
         key: razorpay_key,
         subscription_id,
         name: 'UPSC Tracker',
-        description: '₹1 registration + ₹299/month after 30 days',
+        description: '₹1 registration + ₹199/month after 30 days',
         image: '',
         prefill: { name: user_name, email: user_email },
         theme: { color: '#7C6FFF' },
