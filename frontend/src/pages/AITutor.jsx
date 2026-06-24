@@ -82,7 +82,7 @@ export default function AITutor() {
 
       // Try to load actual data from tracker
       try {
-        const overviewRes = await api.get('/overview/current');
+        const overviewRes = await api.get(`/overview/daily?date=${new Date().toISOString().slice(0,10)}`);
         if (overviewRes.data) {
           setUserData(prev => ({
             ...prev,
@@ -283,11 +283,11 @@ const reply = response.data.reply || 'Sorry, I could not generate a response. Pl
         {/* Quick suggestions — only show at start */}
         {messages.length <= 1 && (
           <div style={s.suggestions}>
-            {SUGGESTIONS.map(s => (
-              <button
-                key={s}
-                className="suggestion-chip"
-                style={s}
+            {SUGGESTIONS.map(suggestion => (
+  <button
+    key={suggestion}
+    className="suggestion-chip"
+    style={sc.chip}
                 onClick={() => sendMessage(s)}
               >{s}</button>
             ))}
