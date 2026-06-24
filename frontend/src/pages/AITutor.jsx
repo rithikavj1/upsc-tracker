@@ -52,26 +52,17 @@ export default function AITutor() {
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
 
-  useEffect(() => {
-    checkAccess();
-  }, []);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  useEffect(() => { checkAccess(); }, []);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
   const checkAccess = async () => {
     try {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
-      // Check if yearly subscriber
       const subRes = await api.get('/subscription/status');
       const sub = subRes.data;
-      const hasYearly = sub.status === 'active' && sub.plan === 'yearly';
-      // For testing — also allow active users
-      const hasAccess = true; // Open to all users for now
+      const hasAccess = true; // Open to all active users for now
       setIsYearly(hasAccess);
 
-      // Load user data for context
       setUserData({
         name: user.name || 'Aspirant',
         subjects: 'Polity, History, Geography, Economics, Environment, Science & Tech',
@@ -80,7 +71,6 @@ export default function AITutor() {
         streak: 12,
       });
 
-      // Try to load actual data from tracker
       try {
         const overviewRes = await api.get(`/overview/daily?date=${new Date().toISOString().slice(0,10)}`);
         if (overviewRes.data) {
@@ -116,19 +106,14 @@ export default function AITutor() {
     setLoading(true);
 
     try {
-      const token = localStorage.getItem('token');
-const response = await api.post('/ai/chat', {
-  systemPrompt: SYSTEM_PROMPT(userData),
-  messages: newMessages
-    .filter(m => m.role === 'user' || m.role === 'assistant')
-    .map(m => ({ role: m.role, content: m.content }))
-});
-const reply = response.data.reply || 'Sorry, I could not generate a response. Please try again.';
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: reply,
-        id: Date.now() + 1,
-      }]);
+      const response = await api.post('/ai/chat', {
+        systemPrompt: SYSTEM_PROMPT(userData),
+        messages: newMessages
+          .filter(m => m.role === 'user' || m.role === 'assistant')
+          .map(m => ({ role: m.role, content: m.content }))
+      });
+      const reply = response.data.reply || 'Sorry, I could not generate a response. Please try again.';
+      setMessages(prev => [...prev, { role: 'assistant', content: reply, id: Date.now() + 1 }]);
     } catch(e) {
       setMessages(prev => [...prev, {
         role: 'assistant',
@@ -142,10 +127,7 @@ const reply = response.data.reply || 'Sorry, I could not generate a response. Pl
   };
 
   const handleKey = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   };
 
   const formatMessage = (text) => {
@@ -160,7 +142,8 @@ const reply = response.data.reply || 'Sorry, I could not generate a response. Pl
       .replace(/\n/g, '<br/>');
   };
 
-  const s = {
+  // ── Styles (named 'st' to avoid conflicts with map variables) ─────────────
+  const st = {
     page: { padding: '32px 40px', maxWidth: 900, margin: '0 auto', height: 'calc(100vh - 68px)', display: 'flex', flexDirection: 'column' },
     header: { marginBottom: 20, flexShrink: 0 },
     title: { fontSize: 22, fontWeight: 700, letterSpacing: '-.5px', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 10 },
@@ -175,7 +158,8 @@ const reply = response.data.reply || 'Sorry, I could not generate a response. Pl
       fontSize: 14, color: '#fff', fontWeight: 700,
     }),
     bubble: (role) => ({
-      maxWidth: '75%', padding: '12px 16px', borderRadius: role === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+      maxWidth: '75%', padding: '12px 16px',
+      borderRadius: role === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
       background: role === 'user' ? 'var(--purple)' : 'var(--surface2)',
       border: role === 'user' ? 'none' : '1px solid var(--border)',
       color: role === 'user' ? '#fff' : 'var(--text)',
@@ -184,7 +168,7 @@ const reply = response.data.reply || 'Sorry, I could not generate a response. Pl
     suggestions: { display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12, flexShrink: 0 },
     chip: { padding: '7px 14px', borderRadius: 20, fontSize: 12, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text2)', cursor: 'pointer', transition: 'all .15s', fontWeight: 500 },
     inputRow: { display: 'flex', gap: 10, flexShrink: 0 },
-    input: { flex: 1, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 16px', fontSize: 14, color: 'var(--text)', fontFamily: 'Inter,sans-serif', outline: 'none', resize: 'none', lineHeight: 1.5 },
+    input: { flex: 1, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 16px', fontSize: 14, color: 'var(--text)', fontFamily: 'Sora,sans-serif', outline: 'none', resize: 'none', lineHeight: 1.5 },
     sendBtn: { width: 48, height: 48, borderRadius: 12, background: 'var(--purple)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all .2s' },
     locked: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 48, textAlign: 'center' },
     typing: { display: 'flex', gap: 4, padding: '12px 16px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '18px 18px 18px 4px', width: 'fit-content' },
@@ -192,35 +176,26 @@ const reply = response.data.reply || 'Sorry, I could not generate a response. Pl
   };
 
   if (checkingAccess) return (
-    <div style={{ ...s.page, alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{ ...st.page, alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ color: 'var(--text2)', fontSize: 14 }}>Checking access...</div>
     </div>
   );
 
   if (isYearly === false) return (
-    <div style={s.page}>
-      <div style={s.header}>
-        <div style={s.title}>🤖 AI Tutor <span style={s.badge}>YEARLY ONLY</span></div>
-        <div style={s.sub}>Your personal UPSC mentor powered by AI</div>
+    <div style={st.page}>
+      <div style={st.header}>
+        <div style={st.title}>🤖 AI Tutor <span style={st.badge}>YEARLY ONLY</span></div>
+        <div style={st.sub}>Your personal UPSC mentor powered by AI</div>
       </div>
-      <div style={s.locked}>
+      <div style={st.locked}>
         <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
-        <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)', marginBottom: 10, letterSpacing: '-.4px' }}>AI Tutor is a Yearly Plan feature</div>
+        <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)', marginBottom: 10 }}>AI Tutor is a Yearly Plan feature</div>
         <div style={{ fontSize: 14, color: 'var(--text2)', maxWidth: 400, lineHeight: 1.7, marginBottom: 28 }}>
-          Get personalized UPSC mentoring, topper strategy comparisons, and AI-generated study plans — exclusively for yearly subscribers.
-        </div>
-        <div style={{ background: 'var(--purple-dim)', border: '1px solid rgba(124,111,255,0.3)', borderRadius: 12, padding: '16px 24px', marginBottom: 24, textAlign: 'left' }}>
-          <div style={{ fontSize: 12, color: 'var(--purple)', fontWeight: 700, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.5px' }}>Yearly Plan — ₹1699/year</div>
-          {['AI Tutor with chat memory','Personalized study plans','Topper strategy comparisons','Weekly performance reviews','All Pro Monthly features'].map(f => (
-            <div key={f} style={{ fontSize: 13, color: 'var(--text2)', padding: '4px 0', display: 'flex', gap: 8 }}>
-              <span style={{ color: '#22D3A0' }}>✓</span>{f}
-            </div>
-          ))}
+          Get personalized UPSC mentoring, topper strategy comparisons, and AI-generated study plans.
         </div>
         <a href="/subscription" style={{ background: 'linear-gradient(135deg,#7C6FFF,#2DD4BF)', color: '#fff', padding: '13px 32px', borderRadius: 11, fontSize: 14, fontWeight: 700, textDecoration: 'none', display: 'inline-block' }}>
           Upgrade to Yearly — ₹1699 →
         </a>
-        <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 12 }}>Cancel anytime · Save ₹689 vs monthly</div>
       </div>
     </div>
   );
@@ -236,44 +211,38 @@ const reply = response.data.reply || 'Sorry, I could not generate a response. Pl
         .send-btn:hover { background: #6A5EE8 !important; transform: scale(1.05); }
         .chat-input:focus { border-color: var(--purple) !important; }
       `}</style>
-      <div style={s.page}>
-        <div style={s.header}>
-          <div style={s.title}>
+      <div style={st.page}>
+        <div style={st.header}>
+          <div style={st.title}>
             🤖 AI Tutor
-            <span style={s.badge}>YEARLY PRO</span>
+            <span style={st.badge}>PRO</span>
           </div>
-          <div style={s.sub}>Your personal UPSC mentor · Powered by Claude AI · Chat history saved this session</div>
+          <div style={st.sub}>Your personal UPSC mentor · Powered by Gemini AI · Chat history saved this session</div>
         </div>
 
         {/* Chat window */}
-        <div style={s.chatWrap}>
+        <div style={st.chatWrap}>
           {messages.map((msg) => (
-            <div key={msg.id} style={s.msgRow(msg.role)}>
-              {msg.role === 'assistant' && (
-                <div style={s.avatar('assistant')}>🤖</div>
-              )}
-              <div style={s.bubble(msg.role)}>
-                {msg.role === 'assistant' ? (
-                  <div dangerouslySetInnerHTML={{ __html: formatMessage(msg.content) }}/>
-                ) : (
-                  msg.content
-                )}
+            <div key={msg.id} style={st.msgRow(msg.role)}>
+              {msg.role === 'assistant' && <div style={st.avatar('assistant')}>🤖</div>}
+              <div style={st.bubble(msg.role)}>
+                {msg.role === 'assistant'
+                  ? <div dangerouslySetInnerHTML={{ __html: formatMessage(msg.content) }}/>
+                  : msg.content}
               </div>
               {msg.role === 'user' && (
-                <div style={s.avatar('user')}>
-                  {(userData.name || 'U')[0].toUpperCase()}
-                </div>
+                <div style={st.avatar('user')}>{(userData.name || 'U')[0].toUpperCase()}</div>
               )}
             </div>
           ))}
 
           {loading && (
-            <div style={s.msgRow('assistant')}>
-              <div style={s.avatar('assistant')}>🤖</div>
-              <div style={s.typing}>
-                <div style={s.dot(0)}></div>
-                <div style={s.dot(1)}></div>
-                <div style={s.dot(2)}></div>
+            <div style={st.msgRow('assistant')}>
+              <div style={st.avatar('assistant')}>🤖</div>
+              <div style={st.typing}>
+                <div style={st.dot(0)}></div>
+                <div style={st.dot(1)}></div>
+                <div style={st.dot(2)}></div>
               </div>
             </div>
           )}
@@ -282,24 +251,24 @@ const reply = response.data.reply || 'Sorry, I could not generate a response. Pl
 
         {/* Quick suggestions — only show at start */}
         {messages.length <= 1 && (
-          <div style={s.suggestions}>
+          <div style={st.suggestions}>
             {SUGGESTIONS.map(suggestion => (
-  <button
-    key={suggestion}
-    className="suggestion-chip"
-    style={sc.chip}
-                onClick={() => sendMessage(s)}
-              >{s}</button>
+              <button
+                key={suggestion}
+                className="suggestion-chip"
+                style={st.chip}
+                onClick={() => sendMessage(suggestion)}
+              >{suggestion}</button>
             ))}
           </div>
         )}
 
         {/* Input */}
-        <div style={s.inputRow}>
+        <div style={st.inputRow}>
           <textarea
             ref={inputRef}
             className="chat-input"
-            style={s.input}
+            style={st.input}
             rows={1}
             placeholder="Ask anything about UPSC — strategy, subjects, toppers, timetable..."
             value={input}
@@ -308,13 +277,13 @@ const reply = response.data.reply || 'Sorry, I could not generate a response. Pl
           />
           <button
             className="send-btn"
-            style={{ ...s.sendBtn, opacity: loading || !input.trim() ? 0.5 : 1 }}
+            style={{ ...st.sendBtn, opacity: loading || !input.trim() ? 0.5 : 1 }}
             onClick={() => sendMessage()}
             disabled={loading || !input.trim()}
           >→</button>
         </div>
         <div style={{ fontSize: 11, color: 'var(--text3)', textAlign: 'center', marginTop: 8 }}>
-          Press Enter to send · Shift+Enter for new line · Powered by Claude AI
+          Press Enter to send · Shift+Enter for new line · Powered by Gemini AI
         </div>
       </div>
     </>
