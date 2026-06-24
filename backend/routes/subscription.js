@@ -60,7 +60,24 @@ if (!customerId) {
     customerId = customer.id;
   } catch (custErr) {
     console.error('Customer create error:', custErr);
-    throw new Error('Could not create Razorpay customer: ' + custErr.description || custErr.message);
+    // If customer already exists, fetch them by email
+    if (custErr?.error?.code === 'BAD_REQUEST_ERROR' && 
+        custErr?.error?.description?.includes('already exists')) {
+      try {
+        const customers = await razorpay.customers.all({ count: 100 });
+        const existing = customers.items?.find(c => c.email === user.email);
+        if (existing) {
+          customerId = existing.id;
+        } else {
+          throw new Error('Customer exists but could not be found by email');
+        }
+      } catch (fetchErr) {
+        console.error('Customer fetch error:', fetchErr);
+        throw new Error('Could not fetch existing Razorpay customer');
+      }
+    } else {
+      throw new Error('Could not create Razorpay customer: ' + (custErr?.error?.description || custErr.message));
+    }
   }
   await pool.query('UPDATE users SET razorpay_customer_id=$1 WHERE id=$2', [customerId, user.id]);
 }
