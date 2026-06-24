@@ -8,6 +8,7 @@ const navItems = [
   { path: '/monthly', label: 'Monthly Overview', icon: '📊' },
   { path: '/topics', label: 'Subject Hours Log', icon: '📚' },
   { path: '/targets', label: 'Targets & Settings', icon: '🎯' },
+  { path: '/habits', label: 'Habits', icon: '🎯' },
   { path: '/subscription', label: 'Subscription ⭐', icon: '💳' },
 ];
 

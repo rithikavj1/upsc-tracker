@@ -8,6 +8,7 @@ const targetRoutes = require('./routes/targets');
 const overviewRoutes = require('./routes/overview');
 const weeklyRoutes = require('./routes/weekly');
 const subscriptionRoutes = require('./routes/subscription');
+const habitsRoutes = require('./routes/habits');
 
 const app = express();
 
@@ -20,7 +21,7 @@ const allowedOrigins = [
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin || allowedOrigins.some(o => origin.startsWith(o))) callback(null, true);
-    else callback(null, true); // allow all for now; restrict in prod
+    else callback(null, true);
   },
   credentials: true
 }));
@@ -35,6 +36,7 @@ app.use('/api/targets', targetRoutes);
 app.use('/api/overview', overviewRoutes);
 app.use('/api/weekly', weeklyRoutes);
 app.use('/api/subscription', subscriptionRoutes);
+app.use('/api/habits', habitsRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);
