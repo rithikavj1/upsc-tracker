@@ -42,10 +42,45 @@ router.get('/status', auth, async (req, res) => {
 });
 
 // POST — create Razorpay subscription (₹1 auth + ₹299/month)
+// POST — create Razorpay subscription
 router.post('/create', auth, async (req, res) => {
   try {
     const userResult = await pool.query('SELECT * FROM users WHERE id=$1', [req.user.id]);
     const user = userResult.rows[0];
+
+    const plan = req.body.plan === 'yearly'
+      ? process.env.RAZORPAY_PLAN_ID_YEARLY
+      : process.env.RAZORPAY_PLAN_ID_MONTHLY;
+
+    // Create subscription directly — no customer needed
+    const subscription = await razorpay.subscriptions.create({
+      plan_id: plan,
+      customer_notify: 1,
+      quantity: 1,
+      total_count: 120,
+      notes: {
+        user_id: req.user.id.toString(),
+        user_email: user.email,
+      }
+    });
+
+    await pool.query(
+      `UPDATE users SET razorpay_subscription_id=$1, subscription_status='pending'
+       WHERE id=$2`,
+      [subscription.id, req.user.id]
+    );
+
+    res.json({
+      subscription_id: subscription.id,
+      razorpay_key: process.env.RAZORPAY_KEY_ID,
+      user_name: user.name,
+      user_email: user.email,
+    });
+  } catch (err) {
+    console.error('Subscription create error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
     // Create Razorpay customer
     let customerId = user.razorpay_customer_id;
