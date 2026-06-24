@@ -1,432 +1,484 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import api from '../api';
 
-const DEFAULT_CATEGORIES = [
-  { name: 'Entertainment', icon: '🎬', color: '#F59E0B' },
-  { name: 'Movie Time', icon: '🍿', color: '#EF4444' },
-  { name: 'Family Time', icon: '👨‍👩‍👧', color: '#22C55E' },
-  { name: 'Exercise', icon: '🏃', color: '#3B82F6' },
-  { name: 'Reading', icon: '📚', color: '#8B5CF6' },
-  { name: 'Social Media', icon: '📱', color: '#EC4899' },
+const DEFAULT_ACTS = [
+  { name: 'Entertainment', icon: '🎬', color: '#bb8fce' },
+  { name: 'Movie Time',    icon: '🍿', color: '#ff6b6b' },
+  { name: 'Family Time',  icon: '👨‍👩‍👧', color: '#82e0aa' },
+  { name: 'Exercise',     icon: '🏃', color: '#4ecdc4' },
+  { name: 'Social Media', icon: '📱', color: '#85c1e9' },
+  { name: 'Other',        icon: '🎯', color: '#f7dc6f' },
 ];
 
-const ICONS = ['🎬','🍿','👨‍👩‍👧','🏃','📚','📱','🎮','🎵','🍳','✈️','😴','🎨','🏋️','🧘','🛍️'];
-const COLORS = ['#F59E0B','#EF4444','#22C55E','#3B82F6','#8B5CF6','#EC4899','#14B8A6','#F97316','#06B6D4','#84CC16'];
-
-function minsToHr(m) {
-  if (!m) return '0h';
-  const h = Math.floor(m / 60);
-  const mn = m % 60;
-  return h > 0 ? `${h}h ${mn > 0 ? mn + 'm' : ''}`.trim() : `${mn}m`;
+function fmtMins(m) {
+  if (!m) return '0m';
+  const h = Math.floor(m / 60), min = m % 60;
+  if (h && min) return `${h}h ${min}m`;
+  if (h) return `${h}h`;
+  return `${min}m`;
 }
 
-function today() {
-  return new Date().toISOString().slice(0, 10);
+function todayStr() { return new Date().toISOString().slice(0, 10); }
+function dateKey(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+
+function WeeklyChart({ days, logs, categories }) {
+  const ref = useRef();
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width = canvas.parentElement.offsetWidth - 32;
+    const H = canvas.height = 160;
+    ctx.clearRect(0, 0, W, H);
+    const catMap = {};
+    categories.forEach(c => { catMap[c.name] = c.color; });
+    catMap['Study'] = '#7C6FFF';
+    const stacks = days.map(d => {
+      const key = dateKey(d);
+      const dayLogs = logs.filter(l => l.date?.slice(0, 10) === key);
+      const s = {};
+      dayLogs.forEach(l => { s[l.category_name] = (s[l.category_name] || 0) + l.duration_minutes; });
+      return s;
+    });
+    const maxTotal = Math.max(...stacks.map(s => Object.values(s).reduce((a, b) => a + b, 0)), 60);
+    const pad = { l: 32, r: 8, t: 8, b: 24 };
+    const bw = (W - pad.l - pad.r) / days.length;
+    const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1;
+    [0.25, 0.5, 0.75, 1].forEach(f => {
+      const y = pad.t + (H - pad.t - pad.b) * (1 - f);
+      ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.font = '9px system-ui'; ctx.textAlign = 'right';
+      ctx.fillText(fmtMins(Math.round(maxTotal * f)), pad.l - 4, y + 3);
+    });
+    stacks.forEach((s, i) => {
+      let y = H - pad.b;
+      Object.entries(s).forEach(([name, mins]) => {
+        if (!mins) return;
+        const bh = (mins / maxTotal) * (H - pad.t - pad.b);
+        y -= bh;
+        ctx.fillStyle = catMap[name] || '#888';
+        ctx.beginPath();
+        ctx.roundRect(pad.l + i * bw + bw * 0.15, y, bw * 0.7, bh, [3]);
+        ctx.fill();
+      });
+      ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+      ctx.fillText(dayNames[days[i].getDay()], pad.l + i * bw + bw / 2, H - 4);
+    });
+  }, [days, logs, categories]);
+  return <canvas ref={ref} style={{ width: '100%', display: 'block' }} />;
+}
+
+function DonutChart({ data, total }) {
+  const ref = useRef();
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const size = 120; canvas.width = canvas.height = size;
+    ctx.clearRect(0, 0, size, size);
+    const cx = size / 2, cy = size / 2, r = 50, ir = 28;
+    if (!total) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 12;
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke(); return;
+    }
+    let start = -Math.PI / 2;
+    data.forEach(({ color, mins }) => {
+      if (!mins) return;
+      const angle = (mins / total) * Math.PI * 2;
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, r, start, start + angle);
+      ctx.closePath(); ctx.fillStyle = color; ctx.fill(); start += angle;
+    });
+    ctx.beginPath(); ctx.arc(cx, cy, ir, 0, Math.PI * 2);
+    ctx.fillStyle = '#17171f'; ctx.fill();
+  }, [data, total]);
+  return <canvas ref={ref} style={{ width: 120, height: 120 }} />;
 }
 
 export default function HabitTracker() {
+  const [tab, setTab] = useState('today');
   const [categories, setCategories] = useState([]);
   const [logs, setLogs] = useState([]);
-  const [compareData, setCompareData] = useState(null);
-  const [compareDays, setCompareDays] = useState(7);
-  const [tab, setTab] = useState('log'); // log | compare | manage
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState('');
-
-  // Log form
-  const [logForm, setLogForm] = useState({ category_id: '', date: today(), duration_minutes: '', notes: '' });
-  const [logSubmitting, setLogSubmitting] = useState(false);
-
-  // Category form
-  const [catForm, setCatForm] = useState({ name: '', icon: '🎯', color: '#7C6FFF' });
-  const [catSubmitting, setCatSubmitting] = useState(false);
-  const [showCatForm, setShowCatForm] = useState(false);
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [monthOffset, setMonthOffset] = useState(0);
+  const [selectedCat, setSelectedCat] = useState(null);
+  const [duration, setDuration] = useState('');
+  const [logDate, setLogDate] = useState(todayStr());
+  const [notes, setNotes] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [timerRunning, setTimerRunning] = useState(false);
+  const [timerSecs, setTimerSecs] = useState(0);
+  const timerRef = useRef(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [newCat, setNewCat] = useState({ name: '', icon: '🎯', color: '#7C6FFF' });
 
   useEffect(() => { loadAll(); }, []);
-  useEffect(() => { if (tab === 'compare') loadCompare(); }, [tab, compareDays]);
 
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [catRes, logRes] = await Promise.all([
-        api.get('/habits/categories'),
-        api.get('/habits/logs'),
-      ]);
-      setCategories(catRes.data);
-      setLogs(logRes.data);
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
+      const [cRes, lRes] = await Promise.all([api.get('/habits/categories'), api.get('/habits/logs')]);
+      setCategories(cRes.data); setLogs(lRes.data);
+    } catch (e) { console.error(e); } finally { setLoading(false); }
   };
 
-  const loadCompare = async () => {
-    try {
-      const res = await api.get(`/habits/compare?days=${compareDays}`);
-      setCompareData(res.data);
-    } catch (e) { console.error(e); }
-  };
+  useEffect(() => {
+    if (timerRunning) { timerRef.current = setInterval(() => setTimerSecs(s => s + 1), 1000); }
+    else { clearInterval(timerRef.current); }
+    return () => clearInterval(timerRef.current);
+  }, [timerRunning]);
 
-  const addDefaultCategory = async (cat) => {
-    try {
-      const res = await api.post('/habits/categories', cat);
-      setCategories(prev => [...prev, res.data]);
-    } catch (e) { setMsg('❌ ' + (e.response?.data?.error || e.message)); }
+  const fmtTimer = (s) => `${String(Math.floor(s/3600)).padStart(2,'0')}:${String(Math.floor((s%3600)/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+  const stopTimer = () => { setTimerRunning(false); const m = Math.round(timerSecs/60); if (m>0) setDuration(String(m)); setTimerSecs(0); };
+  const flash = (m) => { setMsg(m); setTimeout(() => setMsg(''), 3000); };
+
+  const addDefaultCat = async (cat) => {
+    try { const r = await api.post('/habits/categories', cat); setCategories(p => [...p, r.data]); }
+    catch (e) { flash('❌ ' + e.message); }
   };
 
   const submitLog = async () => {
-    if (!logForm.category_id || !logForm.duration_minutes) {
-      setMsg('❌ Please fill category and duration'); return;
-    }
-    setLogSubmitting(true);
+    if (!selectedCat || !duration) { flash('❌ Select a category and enter duration'); return; }
+    setSubmitting(true);
     try {
-      const res = await api.post('/habits/logs', {
-        ...logForm,
-        duration_minutes: parseInt(logForm.duration_minutes),
-      });
-      setLogs(prev => [{ ...res.data, category_name: categories.find(c => c.id == logForm.category_id)?.name, icon: categories.find(c => c.id == logForm.category_id)?.icon, color: categories.find(c => c.id == logForm.category_id)?.color }, ...prev]);
-      setLogForm({ category_id: '', date: today(), duration_minutes: '', notes: '' });
-      setMsg('✅ Logged successfully!');
-      setTimeout(() => setMsg(''), 3000);
-    } catch (e) { setMsg('❌ ' + (e.response?.data?.error || e.message)); }
-    finally { setLogSubmitting(false); }
+      const r = await api.post('/habits/logs', { category_id: selectedCat.id, date: logDate, duration_minutes: parseInt(duration), notes });
+      setLogs(p => [{ ...r.data, category_name: selectedCat.name, icon: selectedCat.icon, color: selectedCat.color }, ...p]);
+      setDuration(''); setNotes(''); setSelectedCat(null); flash('✅ Logged!');
+    } catch (e) { flash('❌ ' + (e.response?.data?.error || e.message)); } finally { setSubmitting(false); }
   };
 
   const deleteLog = async (id) => {
-    try {
-      await api.delete(`/habits/logs/${id}`);
-      setLogs(prev => prev.filter(l => l.id !== id));
-    } catch (e) { setMsg('❌ ' + e.message); }
+    try { await api.delete(`/habits/logs/${id}`); setLogs(p => p.filter(l => l.id !== id)); }
+    catch (e) { flash('❌ ' + e.message); }
   };
 
-  const submitCat = async () => {
-    if (!catForm.name) { setMsg('❌ Name required'); return; }
-    setCatSubmitting(true);
+  const addCat = async () => {
+    if (!newCat.name) { flash('❌ Name required'); return; }
     try {
-      const res = await api.post('/habits/categories', catForm);
-      setCategories(prev => [...prev, res.data]);
-      setCatForm({ name: '', icon: '🎯', color: '#7C6FFF' });
-      setShowCatForm(false);
-      setMsg('✅ Category added!');
-      setTimeout(() => setMsg(''), 3000);
-    } catch (e) { setMsg('❌ ' + (e.response?.data?.error || e.message)); }
-    finally { setCatSubmitting(false); }
+      const r = await api.post('/habits/categories', newCat);
+      setCategories(p => [...p, r.data]); setNewCat({ name: '', icon: '🎯', color: '#7C6FFF' }); setShowAdd(false); flash('✅ Added!');
+    } catch (e) { flash('❌ ' + e.message); }
   };
 
   const deleteCat = async (id) => {
-    if (!confirm('Delete this category? All its logs will also be deleted.')) return;
-    try {
-      await api.delete(`/habits/categories/${id}`);
-      setCategories(prev => prev.filter(c => c.id !== id));
-      setLogs(prev => prev.filter(l => l.category_id !== id));
-    } catch (e) { setMsg('❌ ' + e.message); }
+    if (!confirm('Delete category and all its logs?')) return;
+    try { await api.delete(`/habits/categories/${id}`); setCategories(p => p.filter(c => c.id !== id)); setLogs(p => p.filter(l => l.category_id !== id)); }
+    catch (e) { flash('❌ ' + e.message); }
   };
 
-  // Build compare chart data
-  const buildCompareChart = () => {
-    if (!compareData) return [];
-    const dateMap = {};
-    compareData.study.forEach(s => {
-      if (!dateMap[s.date]) dateMap[s.date] = { date: s.date, Study: 0 };
-      dateMap[s.date].Study += Math.round(s.total_minutes);
-    });
-    compareData.habits.forEach(h => {
-      const d = h.date?.slice(0, 10) || h.date;
-      if (!dateMap[d]) dateMap[d] = { date: d, Study: 0 };
-      dateMap[d][h.name] = (dateMap[d][h.name] || 0) + Math.round(h.total_minutes);
-    });
-    return Object.values(dateMap).sort((a, b) => a.date.localeCompare(b.date));
+  const getWeekDays = () => {
+    const now = new Date(); const mon = new Date(now);
+    mon.setDate(now.getDate() - ((now.getDay() + 6) % 7) + weekOffset * 7);
+    return Array.from({ length: 7 }, (_, i) => { const d = new Date(mon); d.setDate(mon.getDate() + i); return d; });
+  };
+  const weekDays = getWeekDays();
+  const weekLabel = `${weekDays[0].toLocaleDateString('en-IN',{day:'numeric',month:'short'})} – ${weekDays[6].toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}`;
+
+  const getMonthTarget = () => { const now = new Date(); return new Date(now.getFullYear(), now.getMonth() + monthOffset, 1); };
+  const monthTarget = getMonthTarget();
+  const daysInMonth = new Date(monthTarget.getFullYear(), monthTarget.getMonth() + 1, 0).getDate();
+  const monthLogs = logs.filter(l => l.date?.slice(0, 7) === `${monthTarget.getFullYear()}-${String(monthTarget.getMonth()+1).padStart(2,'0')}`);
+  const monthTotals = {}; categories.forEach(c => { monthTotals[c.name] = 0; });
+  monthLogs.forEach(l => { monthTotals[l.category_name] = (monthTotals[l.category_name] || 0) + l.duration_minutes; });
+  const monthGrand = Object.values(monthTotals).reduce((a, b) => a + b, 0);
+  const monthMax = Math.max(...Object.values(monthTotals), 1);
+
+  const todayLogs = logs.filter(l => l.date?.slice(0, 10) === todayStr());
+  const todayTotal = todayLogs.reduce((s, l) => s + l.duration_minutes, 0);
+  const catLogged = new Set(todayLogs.map(l => l.category_name));
+
+  const renderCalendar = () => {
+    const firstDay = (new Date(monthTarget.getFullYear(), monthTarget.getMonth(), 1).getDay() + 6) % 7;
+    const cells = [];
+    ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(h => cells.push(
+      <div key={h} style={{ textAlign:'center', fontSize:10, color:'rgba(255,255,255,.25)', padding:'6px 0', fontWeight:600 }}>{h}</div>
+    ));
+    for (let i = 0; i < firstDay; i++) cells.push(<div key={`e${i}`} />);
+    const td = todayStr();
+    for (let d = 1; d <= daysInMonth; d++) {
+      const key = `${monthTarget.getFullYear()}-${String(monthTarget.getMonth()+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      const dayLogs = logs.filter(l => l.date?.slice(0,10) === key);
+      const isToday = key === td;
+      const topLog = [...dayLogs].sort((a,b)=>b.duration_minutes-a.duration_minutes)[0];
+      const accent = topLog?.color;
+      cells.push(
+        <div key={d} style={{ textAlign:'center', padding:'6px 2px', borderRadius:8, background: accent ? `${accent}22` : 'transparent', border: isToday ? '1px solid #7C6FFF' : accent ? `1px solid ${accent}44` : '1px solid transparent', fontSize:12, color: isToday ? '#7C6FFF' : 'rgba(255,255,255,.7)' }}>
+          {d}
+          {accent && <div style={{ width:4, height:4, borderRadius:'50%', background:accent, margin:'2px auto 0' }} />}
+        </div>
+      );
+    }
+    return cells;
   };
 
-  // Totals for compare summary
-  const buildTotals = () => {
-    if (!compareData) return [];
-    const totals = {};
-    compareData.study.forEach(s => {
-      totals['Study'] = (totals['Study'] || 0) + Math.round(s.total_minutes);
-    });
-    compareData.habits.forEach(h => {
-      const meta = compareData.habits.find(x => x.name === h.name);
-      totals[h.name] = (totals[h.name] || 0) + Math.round(h.total_minutes);
-    });
-    return Object.entries(totals).map(([name, mins]) => ({ name, mins })).sort((a, b) => b.mins - a.mins);
+  const s = {
+    card: { background:'#1e1e28', border:'1px solid rgba(255,255,255,0.07)', borderRadius:16, padding:20 },
+    inp: { background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:10, padding:'10px 14px', fontSize:13, color:'var(--text,#e8e8f0)', width:'100%', boxSizing:'border-box', outline:'none' },
+    label: { fontSize:10, color:'rgba(255,255,255,.35)', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:6, display:'block', fontWeight:600 },
+    tabBtn: (a) => ({ background: a ? '#7C6FFF' : 'rgba(255,255,255,.04)', color: a ? '#fff' : 'rgba(255,255,255,.4)', border: a ? 'none' : '1px solid rgba(255,255,255,.08)', borderRadius:10, padding:'9px 20px', fontSize:13, fontWeight:600, cursor:'pointer' }),
+    btn: (bg, col='#fff') => ({ background:bg, color:col, border:'none', borderRadius:10, padding:'10px 20px', fontSize:13, fontWeight:600, cursor:'pointer' }),
+    sec: { fontWeight:700, fontSize:11, color:'rgba(255,255,255,.3)', textTransform:'uppercase', letterSpacing:'.1em', marginBottom:14 },
+    navBtn: { background:'rgba(255,255,255,.05)', color:'rgba(255,255,255,.5)', border:'1px solid rgba(255,255,255,.08)', borderRadius:10, padding:'7px 16px', fontSize:12, fontWeight:600, cursor:'pointer' },
   };
 
-  const chartData = buildCompareChart();
-  const totals = buildTotals();
-  const grandTotal = totals.reduce((s, t) => s + t.mins, 0);
-
-  const card = { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 24 };
-  const inp = { background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: 'var(--text)', width: '100%', boxSizing: 'border-box' };
-  const btn = (bg, col = '#fff') => ({ background: bg, color: col, border: 'none', borderRadius: 10, padding: '10px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer' });
-
-  const catColors = {};
-  categories.forEach(c => { catColors[c.name] = c.color; });
-  catColors['Study'] = '#7C6FFF';
-
-  if (loading) return <div style={{ padding: 40, color: 'var(--text3)' }}>Loading...</div>;
+  if (loading) return <div style={{ padding:40, color:'rgba(255,255,255,.3)' }}>Loading...</div>;
 
   return (
-    <div style={{ padding: '40px 48px', maxWidth: 900, margin: '0 auto' }}>
-      <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-.5px', marginBottom: 4 }}>Habit Tracker</h1>
-      <p style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 28 }}>Track non-study time and compare with your study hours</p>
+    <div style={{ padding:'32px 40px', maxWidth:960, margin:'0 auto', fontFamily:'system-ui,sans-serif', color:'#e8e8f0' }}>
+      <div style={{ marginBottom:24 }}>
+        <h1 style={{ fontSize:22, fontWeight:800, letterSpacing:'-.5px', marginBottom:4 }}>Habit Tracker</h1>
+        <p style={{ fontSize:13, color:'rgba(255,255,255,.35)' }}>Track your non-study time · compare with study hours</p>
+      </div>
 
-      {msg && (
-        <div style={{ padding: '10px 16px', borderRadius: 10, marginBottom: 16, fontSize: 13, background: msg.startsWith('✅') ? 'var(--green-dim)' : 'var(--red-dim)', color: msg.startsWith('✅') ? 'var(--green)' : 'var(--red)', border: '1px solid var(--border)' }}>
-          {msg}
-        </div>
-      )}
+      {msg && <div style={{ padding:'10px 16px', borderRadius:10, marginBottom:16, fontSize:13, background: msg.startsWith('✅') ? 'rgba(34,211,160,.1)' : 'rgba(239,68,68,.1)', color: msg.startsWith('✅') ? '#22D3A0' : '#EF4444', border:`1px solid ${msg.startsWith('✅') ? 'rgba(34,211,160,.2)' : 'rgba(239,68,68,.2)'}` }}>{msg}</div>}
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
-        {[['log', '📝 Log'], ['compare', '📊 Compare'], ['manage', '⚙️ Manage']].map(([key, label]) => (
-          <button key={key} onClick={() => setTab(key)} style={{ ...btn(tab === key ? '#7C6FFF' : 'var(--surface2)', tab === key ? '#fff' : 'var(--text2)'), border: '1px solid var(--border)' }}>
-            {label}
-          </button>
+      <div style={{ display:'flex', gap:8, marginBottom:24 }}>
+        {[['today','📅 Today'],['weekly','📊 Weekly'],['monthly','📆 Monthly'],['manage','⚙️ Manage']].map(([k,l]) => (
+          <button key={k} onClick={() => setTab(k)} style={s.tabBtn(tab===k)}>{l}</button>
         ))}
       </div>
 
-      {/* ── LOG TAB ── */}
-      {tab === 'log' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 20 }}>
-          {/* Log form */}
-          <div style={card}>
-            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 18 }}>Log Activity</div>
-
-            {categories.length === 0 ? (
-              <div>
-                <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 14 }}>No categories yet. Add some quick ones:</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {DEFAULT_CATEGORIES.map(c => (
-                    <button key={c.name} onClick={() => addDefaultCategory(c)} style={{ ...btn(c.color), fontSize: 12, padding: '6px 12px' }}>
-                      {c.icon} {c.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* ── TODAY ── */}
+      {tab === 'today' && (
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 320px', gap:20 }}>
+          <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+            <div style={s.card}>
+              <div style={s.sec}>Pick Activity</div>
+              {categories.length === 0 ? (
                 <div>
-                  <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6 }}>Category</div>
-                  <select value={logForm.category_id} onChange={e => setLogForm(p => ({ ...p, category_id: e.target.value }))} style={inp}>
-                    <option value=''>Select category...</option>
-                    {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6 }}>Date</div>
-                  <input type='date' value={logForm.date} onChange={e => setLogForm(p => ({ ...p, date: e.target.value }))} style={inp} />
-                </div>
-                <div>
-                  <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6 }}>Duration (minutes)</div>
-                  <input type='number' placeholder='e.g. 90' min='1' value={logForm.duration_minutes} onChange={e => setLogForm(p => ({ ...p, duration_minutes: e.target.value }))} style={inp} />
-                </div>
-                <div>
-                  <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6 }}>Notes (optional)</div>
-                  <input type='text' placeholder='What did you do?' value={logForm.notes} onChange={e => setLogForm(p => ({ ...p, notes: e.target.value }))} style={inp} />
-                </div>
-                <button onClick={submitLog} disabled={logSubmitting} style={btn('#7C6FFF')}>
-                  {logSubmitting ? 'Logging...' : '+ Log Activity'}
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Recent logs */}
-          <div style={card}>
-            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 18 }}>Recent Logs</div>
-            {logs.length === 0 ? (
-              <div style={{ fontSize: 13, color: 'var(--text3)' }}>No activity logged yet.</div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 420, overflowY: 'auto' }}>
-                {logs.slice(0, 30).map(log => (
-                  <div key={log.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--surface2)', borderRadius: 10, borderLeft: `3px solid ${log.color || '#7C6FFF'}` }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <span style={{ fontSize: 18 }}>{log.icon}</span>
-                      <div>
-                        <div style={{ fontSize: 13, fontWeight: 600 }}>{log.category_name}</div>
-                        <div style={{ fontSize: 11, color: 'var(--text3)' }}>{log.date?.slice(0, 10)} {log.notes && `· ${log.notes}`}</div>
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: log.color || '#7C6FFF' }}>{minsToHr(log.duration_minutes)}</span>
-                      <button onClick={() => deleteLog(log.id)} style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 14 }}>✕</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── COMPARE TAB ── */}
-      {tab === 'compare' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {/* Controls */}
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <span style={{ fontSize: 13, color: 'var(--text2)' }}>Show last:</span>
-            {[7, 14, 30].map(d => (
-              <button key={d} onClick={() => setCompareDays(d)} style={{ ...btn(compareDays === d ? '#7C6FFF' : 'var(--surface2)', compareDays === d ? '#fff' : 'var(--text2)'), border: '1px solid var(--border)', padding: '6px 14px', fontSize: 12 }}>
-                {d} days
-              </button>
-            ))}
-          </div>
-
-          {/* Summary cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
-            {totals.map(t => {
-              const pct = grandTotal > 0 ? Math.round((t.mins / grandTotal) * 100) : 0;
-              const color = t.name === 'Study' ? '#7C6FFF' : (catColors[t.name] || '#888');
-              return (
-                <div key={t.name} style={{ ...card, padding: 16, borderLeft: `3px solid ${color}` }}>
-                  <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>{t.name === 'Study' ? '📖' : categories.find(c => c.name === t.name)?.icon || '🎯'} {t.name}</div>
-                  <div style={{ fontSize: 20, fontWeight: 700, color }}>{minsToHr(t.mins)}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>{pct}% of total time</div>
-                  <div style={{ height: 4, background: 'var(--border)', borderRadius: 2, marginTop: 8, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 2 }} />
+                  <div style={{ fontSize:13, color:'rgba(255,255,255,.3)', marginBottom:14 }}>Add your first categories:</div>
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+                    {DEFAULT_ACTS.map(c => <button key={c.name} onClick={() => addDefaultCat(c)} style={{ ...s.btn(c.color), fontSize:12, padding:'7px 14px' }}>{c.icon} {c.name}</button>)}
                   </div>
                 </div>
-              );
-            })}
-          </div>
-
-          {/* Bar chart */}
-          {chartData.length > 0 ? (
-            <div style={card}>
-              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 20 }}>Daily Breakdown — Study vs Habits</div>
-              <div style={{ overflowX: 'auto' }}>
-                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, minWidth: chartData.length * 60, height: 220, padding: '0 8px' }}>
-                  {chartData.map(day => {
-                    const allKeys = Object.keys(day).filter(k => k !== 'date');
-                    const maxMins = Math.max(...chartData.flatMap(d => Object.entries(d).filter(([k]) => k !== 'date').map(([, v]) => v)), 1);
+              ) : (
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10 }}>
+                  {categories.map(c => {
+                    const sel = selectedCat?.id === c.id;
+                    const todayMins = todayLogs.filter(l=>l.category_name===c.name).reduce((s,l)=>s+l.duration_minutes,0);
                     return (
-                      <div key={day.date} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 180 }}>
-                          {allKeys.map(key => {
-                            const color = key === 'Study' ? '#7C6FFF' : (catColors[key] || '#888');
-                            const h = Math.round((day[key] / maxMins) * 160);
-                            return (
-                              <div key={key} title={`${key}: ${minsToHr(day[key])}`} style={{ width: 20, height: h, background: color, borderRadius: '4px 4px 0 0', cursor: 'default', transition: 'opacity .2s' }}
-                                onMouseEnter={e => e.target.style.opacity = '.7'}
-                                onMouseLeave={e => e.target.style.opacity = '1'}
-                              />
-                            );
-                          })}
-                        </div>
-                        <div style={{ fontSize: 10, color: 'var(--text3)', textAlign: 'center' }}>
-                          {day.date.slice(5)}
-                        </div>
+                      <div key={c.id} onClick={() => setSelectedCat(sel ? null : c)} style={{ padding:'16px 10px', borderRadius:14, border:`1.5px solid ${sel ? c.color : 'rgba(255,255,255,.07)'}`, background: sel ? `${c.color}18` : 'rgba(255,255,255,.03)', cursor:'pointer', textAlign:'center', position:'relative', transition:'all .15s' }}>
+                        {(sel || catLogged.has(c.name)) && <div style={{ position:'absolute', top:8, right:8, width:7, height:7, borderRadius:'50%', background:c.color, opacity: sel ? 1 : .5 }} />}
+                        <div style={{ fontSize:26, marginBottom:6 }}>{c.icon}</div>
+                        <div style={{ fontSize:12, fontWeight:600, color: sel ? c.color : 'rgba(255,255,255,.8)' }}>{c.name}</div>
+                        {todayMins > 0 && <div style={{ fontSize:10, color:'rgba(255,255,255,.3)', marginTop:3 }}>{fmtMins(todayMins)} today</div>}
                       </div>
                     );
                   })}
                 </div>
+              )}
+            </div>
+
+            {selectedCat && (
+              <div style={s.card}>
+                <div style={s.sec}>Log Session</div>
+                <div style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', borderRadius:10, background:'rgba(255,255,255,.04)', border:`1px solid ${selectedCat.color}44`, marginBottom:16 }}>
+                  <span style={{ fontSize:22 }}>{selectedCat.icon}</span>
+                  <span style={{ fontWeight:600, color:selectedCat.color }}>{selectedCat.name}</span>
+                </div>
+                <div style={{ background:'rgba(255,255,255,.03)', border:'1px solid rgba(255,255,255,.07)', borderRadius:10, padding:14, marginBottom:14, textAlign:'center' }}>
+                  <div style={{ fontFamily:'monospace', fontSize:28, fontWeight:700, letterSpacing:2, color: timerRunning ? selectedCat.color : 'rgba(255,255,255,.8)', marginBottom:10 }}>{fmtTimer(timerSecs)}</div>
+                  <div style={{ display:'flex', gap:8, justifyContent:'center' }}>
+                    {!timerRunning
+                      ? <button onClick={() => setTimerRunning(true)} style={{ ...s.btn(selectedCat.color), padding:'7px 18px', fontSize:12 }}>▶ Start Timer</button>
+                      : <button onClick={stopTimer} style={{ ...s.btn('#EF4444'), padding:'7px 18px', fontSize:12 }}>⏹ Stop & Use</button>}
+                    {timerSecs > 0 && !timerRunning && <button onClick={() => setTimerSecs(0)} style={{ background:'transparent', border:'1px solid rgba(255,255,255,.1)', color:'rgba(255,255,255,.3)', borderRadius:10, padding:'7px 14px', fontSize:12, cursor:'pointer' }}>Reset</button>}
+                  </div>
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
+                  <div><label style={s.label}>Duration (mins)</label><input type='number' min='1' placeholder='e.g. 90' value={duration} onChange={e=>setDuration(e.target.value)} style={s.inp} /></div>
+                  <div><label style={s.label}>Date</label><input type='date' value={logDate} onChange={e=>setLogDate(e.target.value)} style={s.inp} /></div>
+                </div>
+                <div style={{ marginBottom:14 }}><label style={s.label}>Notes (optional)</label><input type='text' placeholder='What did you watch / do?' value={notes} onChange={e=>setNotes(e.target.value)} style={s.inp} /></div>
+                <button onClick={submitLog} disabled={submitting} style={{ ...s.btn(selectedCat.color), width:'100%' }}>{submitting ? 'Logging...' : '+ Log Activity'}</button>
               </div>
-              {/* Legend */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 16 }}>
-                {['Study', ...categories.map(c => c.name)].map(name => {
-                  const color = name === 'Study' ? '#7C6FFF' : (catColors[name] || '#888');
-                  const icon = name === 'Study' ? '📖' : categories.find(c => c.name === name)?.icon || '🎯';
+            )}
+          </div>
+
+          <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+            <div style={{ ...s.card, textAlign:'center' }}>
+              <div style={s.sec}>Today</div>
+              <div style={{ fontSize:36, fontWeight:800, color:'#7C6FFF', letterSpacing:'-1px' }}>{fmtMins(todayTotal)}</div>
+              <div style={{ fontSize:12, color:'rgba(255,255,255,.3)', marginTop:4 }}>non-study time logged</div>
+            </div>
+            <div style={s.card}>
+              <div style={s.sec}>Today's Log</div>
+              {todayLogs.length === 0
+                ? <div style={{ fontSize:13, color:'rgba(255,255,255,.25)', textAlign:'center', padding:'20px 0' }}>Nothing logged yet</div>
+                : <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                    {todayLogs.map(l => (
+                      <div key={l.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 12px', borderRadius:10, background:'rgba(255,255,255,.03)', borderLeft:`3px solid ${l.color}` }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                          <span style={{ fontSize:16 }}>{l.icon}</span>
+                          <div>
+                            <div style={{ fontSize:13, fontWeight:600 }}>{l.category_name}</div>
+                            {l.notes && <div style={{ fontSize:11, color:'rgba(255,255,255,.3)' }}>{l.notes}</div>}
+                          </div>
+                        </div>
+                        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                          <span style={{ fontSize:13, fontWeight:700, color:l.color }}>{fmtMins(l.duration_minutes)}</span>
+                          <button onClick={() => deleteLog(l.id)} style={{ background:'none', border:'none', color:'rgba(255,255,255,.2)', cursor:'pointer', fontSize:14 }}>✕</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── WEEKLY ── */}
+      {tab === 'weekly' && (
+        <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+            <button onClick={() => setWeekOffset(p=>p-1)} style={s.navBtn}>← Prev</button>
+            <span style={{ fontSize:13, fontWeight:600 }}>{weekLabel}</span>
+            <button onClick={() => setWeekOffset(p=>p+1)} style={s.navBtn}>Next →</button>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:8 }}>
+            {weekDays.map(d => {
+              const key = dateKey(d); const isToday = key === todayStr();
+              const dayLogs = logs.filter(l => l.date?.slice(0,10) === key);
+              const total = dayLogs.reduce((s,l) => s+l.duration_minutes, 0);
+              const dots = [...new Set(dayLogs.map(l => l.color))].slice(0,3);
+              return (
+                <div key={key} style={{ ...s.card, padding:'14px 10px', textAlign:'center', border: isToday ? '1px solid #7C6FFF44' : '1px solid rgba(255,255,255,.07)' }}>
+                  <div style={{ fontSize:10, color:'rgba(255,255,255,.3)', fontWeight:600, marginBottom:4 }}>{['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]}</div>
+                  <div style={{ fontSize:16, fontWeight:700, color: isToday ? '#7C6FFF' : 'rgba(255,255,255,.8)', marginBottom:8 }}>{d.getDate()}</div>
+                  <div style={{ display:'flex', gap:3, justifyContent:'center', marginBottom:6 }}>
+                    {dots.length > 0 ? dots.map((c,i) => <div key={i} style={{ width:6, height:6, borderRadius:'50%', background:c }} />) : <div style={{ width:6, height:6, borderRadius:'50%', background:'rgba(255,255,255,.1)' }} />}
+                  </div>
+                  <div style={{ fontSize:11, fontWeight:700, color: total ? 'rgba(255,255,255,.8)' : 'rgba(255,255,255,.2)' }}>{total ? fmtMins(total) : '—'}</div>
+                </div>
+              );
+            })}
+          </div>
+          <div style={s.card}>
+            <div style={s.sec}>Daily Activity Chart</div>
+            <WeeklyChart days={weekDays} logs={logs} categories={categories} />
+            <div style={{ display:'flex', flexWrap:'wrap', gap:12, marginTop:14 }}>
+              {categories.map(c => (
+                <div key={c.id} style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:'rgba(255,255,255,.4)' }}>
+                  <div style={{ width:8, height:8, borderRadius:2, background:c.color }} />{c.icon} {c.name}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={s.card}>
+            <div style={s.sec}>Activity Breakdown</div>
+            {categories.map(c => {
+              const mins = weekDays.reduce((s,d) => s + logs.filter(l=>l.date?.slice(0,10)===dateKey(d)&&l.category_name===c.name).reduce((a,l)=>a+l.duration_minutes,0), 0);
+              const wMax = Math.max(...categories.map(cat => weekDays.reduce((s,d)=>s+logs.filter(l=>l.date?.slice(0,10)===dateKey(d)&&l.category_name===cat.name).reduce((a,l)=>a+l.duration_minutes,0),0)), 1);
+              return (
+                <div key={c.id} style={{ display:'flex', alignItems:'center', gap:12, marginBottom:12 }}>
+                  <span style={{ width:24, fontSize:16 }}>{c.icon}</span>
+                  <span style={{ width:130, fontSize:13, color:'rgba(255,255,255,.6)' }}>{c.name}</span>
+                  <div style={{ flex:1, height:8, background:'rgba(255,255,255,.05)', borderRadius:4, overflow:'hidden' }}>
+                    <div style={{ height:'100%', width:`${(mins/wMax)*100}%`, background:c.color, borderRadius:4 }} />
+                  </div>
+                  <span style={{ width:50, textAlign:'right', fontSize:13, fontWeight:700, color:c.color }}>{fmtMins(mins)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── MONTHLY ── */}
+      {tab === 'monthly' && (
+        <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+            <button onClick={() => setMonthOffset(p=>p-1)} style={s.navBtn}>← Prev</button>
+            <span style={{ fontSize:14, fontWeight:700 }}>{monthTarget.toLocaleDateString('en-IN',{month:'long',year:'numeric'})}</span>
+            <button onClick={() => setMonthOffset(p=>p+1)} style={s.navBtn}>Next →</button>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 260px', gap:20 }}>
+            <div style={s.card}>
+              <div style={s.sec}>{monthTarget.toLocaleDateString('en-IN',{month:'long',year:'numeric'})}</div>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:4 }}>{renderCalendar()}</div>
+            </div>
+            <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+              <div style={{ ...s.card, display:'flex', flexDirection:'column', alignItems:'center' }}>
+                <div style={s.sec}>Month Total</div>
+                <DonutChart data={categories.map(c=>({color:c.color,mins:monthTotals[c.name]||0}))} total={monthGrand} />
+                <div style={{ fontSize:28, fontWeight:800, color:'#7C6FFF', marginTop:12 }}>{fmtMins(monthGrand)}</div>
+                <div style={{ fontSize:12, color:'rgba(255,255,255,.3)', marginTop:4 }}>across {[...new Set(monthLogs.map(l=>l.date?.slice(0,10)))].length} days</div>
+              </div>
+              <div style={s.card}>
+                {categories.map(c => {
+                  const mins = monthTotals[c.name]||0;
+                  const pct = monthGrand ? ((mins/monthGrand)*100) : 0;
                   return (
-                    <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text2)' }}>
-                      <div style={{ width: 10, height: 10, background: color, borderRadius: 2 }} />
-                      {icon} {name}
+                    <div key={c.id} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
+                      <div style={{ width:8, height:8, borderRadius:'50%', background:c.color, flexShrink:0 }} />
+                      <div style={{ fontSize:12, color:'rgba(255,255,255,.5)', flex:1 }}>{c.icon} {c.name}</div>
+                      <div style={{ fontSize:12, fontWeight:700, color:c.color }}>{Math.round(pct)}%</div>
                     </div>
                   );
                 })}
               </div>
             </div>
-          ) : (
-            <div style={{ ...card, textAlign: 'center', color: 'var(--text3)', fontSize: 13, padding: 40 }}>
-              No data for this period yet. Log some study and habit sessions first!
-            </div>
-          )}
-
-          {/* Study vs Non-Study ratio */}
-          {grandTotal > 0 && (
-            <div style={card}>
-              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 16 }}>Study vs Non-Study Ratio</div>
-              <div style={{ display: 'flex', gap: 0, height: 32, borderRadius: 8, overflow: 'hidden' }}>
-                {totals.map(t => {
-                  const pct = Math.round((t.mins / grandTotal) * 100);
-                  const color = t.name === 'Study' ? '#7C6FFF' : (catColors[t.name] || '#888');
-                  return pct > 0 ? (
-                    <div key={t.name} title={`${t.name}: ${pct}%`} style={{ width: `${pct}%`, background: color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {pct > 8 && <span style={{ fontSize: 11, color: '#fff', fontWeight: 700 }}>{pct}%</span>}
-                    </div>
-                  ) : null;
-                })}
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 12, color: 'var(--text3)' }}>
-                <span>Total tracked: {minsToHr(grandTotal)}</span>
-                <span>Over {compareDays} days</span>
-              </div>
-            </div>
-          )}
+          </div>
+          <div style={s.card}>
+            <div style={s.sec}>Activity Breakdown</div>
+            {categories.map(c => {
+              const mins = monthTotals[c.name]||0;
+              return (
+                <div key={c.id} style={{ display:'flex', alignItems:'center', gap:12, marginBottom:12 }}>
+                  <span style={{ width:24, fontSize:16 }}>{c.icon}</span>
+                  <span style={{ width:130, fontSize:13, color:'rgba(255,255,255,.6)' }}>{c.name}</span>
+                  <div style={{ flex:1, height:8, background:'rgba(255,255,255,.05)', borderRadius:4, overflow:'hidden' }}>
+                    <div style={{ height:'100%', width:`${(mins/monthMax)*100}%`, background:c.color, borderRadius:4 }} />
+                  </div>
+                  <span style={{ width:50, textAlign:'right', fontSize:13, fontWeight:700, color:c.color }}>{fmtMins(mins)}</span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
-      {/* ── MANAGE TAB ── */}
+      {/* ── MANAGE ── */}
       {tab === 'manage' && (
-        <div style={card}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>Your Categories</div>
-            <button onClick={() => setShowCatForm(p => !p)} style={btn('#7C6FFF')}>
-              {showCatForm ? '✕ Cancel' : '+ Add Category'}
-            </button>
+        <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <div style={{ fontSize:14, fontWeight:700 }}>Your Categories</div>
+            <button onClick={() => setShowAdd(p=>!p)} style={s.btn('#7C6FFF')}>{showAdd ? '✕ Cancel' : '+ New Category'}</button>
           </div>
-
-          {showCatForm && (
-            <div style={{ background: 'var(--surface2)', borderRadius: 12, padding: 16, marginBottom: 20 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 10, marginBottom: 12 }}>
-                <input placeholder='Category name...' value={catForm.name} onChange={e => setCatForm(p => ({ ...p, name: e.target.value }))} style={inp} />
-                <select value={catForm.icon} onChange={e => setCatForm(p => ({ ...p, icon: e.target.value }))} style={{ ...inp, width: 'auto' }}>
-                  {ICONS.map(i => <option key={i} value={i}>{i}</option>)}
-                </select>
-                <select value={catForm.color} onChange={e => setCatForm(p => ({ ...p, color: e.target.value }))} style={{ ...inp, width: 'auto' }}>
-                  {COLORS.map(c => <option key={c} value={c} style={{ background: c }}>⬤ {c}</option>)}
+          {showAdd && (
+            <div style={{ ...s.card, display:'flex', gap:10, flexWrap:'wrap', alignItems:'flex-end' }}>
+              <div style={{ flex:2, minWidth:150 }}><label style={s.label}>Name</label><input placeholder='e.g. Gaming' value={newCat.name} onChange={e=>setNewCat(p=>({...p,name:e.target.value}))} style={s.inp} /></div>
+              <div><label style={s.label}>Icon</label>
+                <select value={newCat.icon} onChange={e=>setNewCat(p=>({...p,icon:e.target.value}))} style={{ ...s.inp, width:80 }}>
+                  {['🎬','🍿','👨‍👩‍👧','🏃','📚','📱','🎮','🎵','🍳','✈️','😴','🎨','🏋️','🧘','🛍️','🎯','⚽','🎲'].map(i=><option key={i} value={i}>{i}</option>)}
                 </select>
               </div>
-              <button onClick={submitCat} disabled={catSubmitting} style={btn('#22D3A0')}>
-                {catSubmitting ? 'Adding...' : '✓ Save Category'}
-              </button>
+              <div><label style={s.label}>Color</label><input type='color' value={newCat.color} onChange={e=>setNewCat(p=>({...p,color:e.target.value}))} style={{ ...s.inp, width:60, padding:4, cursor:'pointer' }} /></div>
+              <button onClick={addCat} style={{ ...s.btn('#22D3A0'), whiteSpace:'nowrap' }}>✓ Add</button>
             </div>
           )}
-
-          {/* Quick add defaults */}
           {categories.length === 0 && (
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10 }}>Quick add default categories:</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {DEFAULT_CATEGORIES.map(c => (
-                  <button key={c.name} onClick={() => addDefaultCategory(c)} style={{ ...btn(c.color), fontSize: 12, padding: '6px 14px' }}>
-                    {c.icon} {c.name}
-                  </button>
-                ))}
+            <div style={s.card}>
+              <div style={{ fontSize:12, color:'rgba(255,255,255,.3)', marginBottom:12 }}>Quick add defaults:</div>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+                {DEFAULT_ACTS.map(c => <button key={c.name} onClick={() => addDefaultCat(c)} style={{ ...s.btn(c.color), fontSize:12, padding:'7px 16px' }}>{c.icon} {c.name}</button>)}
               </div>
             </div>
           )}
-
-          {categories.length === 0 ? (
-            <div style={{ fontSize: 13, color: 'var(--text3)' }}>No categories yet. Add some above!</div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {categories.map(c => (
-                <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'var(--surface2)', borderRadius: 10, borderLeft: `3px solid ${c.color}` }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <span style={{ fontSize: 20 }}>{c.icon}</span>
-                    <div>
-                      <div style={{ fontSize: 14, fontWeight: 600 }}>{c.name}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text3)' }}>
-                        {logs.filter(l => l.category_id == c.id).length} logs · {minsToHr(logs.filter(l => l.category_id == c.id).reduce((s, l) => s + l.duration_minutes, 0))} total
-                      </div>
-                    </div>
-                  </div>
-                  <button onClick={() => deleteCat(c.id)} style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--text3)', borderRadius: 8, padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}>
-                    Delete
-                  </button>
+          {categories.map(c => (
+            <div key={c.id} style={{ ...s.card, display:'flex', alignItems:'center', justifyContent:'space-between', borderLeft:`3px solid ${c.color}` }}>
+              <div style={{ display:'flex', alignItems:'center', gap:14 }}>
+                <span style={{ fontSize:22 }}>{c.icon}</span>
+                <div>
+                  <div style={{ fontSize:14, fontWeight:700 }}>{c.name}</div>
+                  <div style={{ fontSize:12, color:'rgba(255,255,255,.3)', marginTop:2 }}>{logs.filter(l=>l.category_id==c.id).length} sessions · {fmtMins(logs.filter(l=>l.category_id==c.id).reduce((s,l)=>s+l.duration_minutes,0))} total</div>
                 </div>
-              ))}
+              </div>
+              <button onClick={() => deleteCat(c.id)} style={{ background:'none', border:'1px solid rgba(255,255,255,.1)', color:'rgba(255,255,255,.3)', borderRadius:8, padding:'6px 14px', fontSize:12, cursor:'pointer' }}>Delete</button>
             </div>
-          )}
+          ))}
         </div>
       )}
     </div>
