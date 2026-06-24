@@ -60,8 +60,12 @@ router.post('/create', auth, async (req, res) => {
     }
 
     // Create subscription with 30 day trial
-    const subscription = await razorpay.subscriptions.create({
-      plan_id: process.env.RAZORPAY_PLAN_ID,
+    const plan = req.body.plan === 'yearly'
+  ? process.env.RAZORPAY_PLAN_ID_YEARLY
+  : process.env.RAZORPAY_PLAN_ID_MONTHLY;
+
+const subscription = await razorpay.subscriptions.create({
+  plan_id: plan,
       customer_notify: 1,
       quantity: 1,
       total_count: 120, // 10 years max
