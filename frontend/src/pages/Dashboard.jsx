@@ -32,6 +32,7 @@ export default function Dashboard() {
   const [settings, setSettings] = useState({ daily_hour_target:8 });
   const [streak, setStreak] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [todaySessions, setTodaySessions] = useState([]);
 
   const [selectedDate, setSelectedDate] = useState(today);
   const [selectedDayData, setSelectedDayData] = useState(null);
@@ -50,36 +51,56 @@ export default function Dashboard() {
       api.get(`/targets?month=${month}&year=${year}`),
       api.get('/targets/settings'),
       api.get('/overview/streak'),
-    ]).then(([d, m, t, s, str]) => {
+      api.get(`/sessions?date=${today}`), // fetch today's sessions with status
+    ]).then(([d, m, t, s, str, sess]) => {
       setDaily(d.data);
       setMonthly(m.data);
       setCalMonthlyData(m.data);
       setTargets(t.data);
       setSettings(s.data);
       setStreak(str.data.streak);
+      setTodaySessions(sess.data);
     }).catch(console.error).finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
     if (!selectedDate) return;
     setLoadingDay(true);
-    api.get(`/overview/daily?date=${selectedDate}`)
-      .then(r => setSelectedDayData(r.data))
-      .catch(console.error)
-      .finally(() => setLoadingDay(false));
+    Promise.all([
+      api.get(`/overview/daily?date=${selectedDate}`),
+      api.get(`/sessions?date=${selectedDate}`),
+    ]).then(([r, sess]) => {
+      setSelectedDayData(r.data);
+      if (selectedDate === today) setTodaySessions(sess.data);
+    }).catch(console.error).finally(() => setLoadingDay(false));
   }, [selectedDate]);
 
   useEffect(() => {
-    if (calMonth === month && calYear === year) {
-      setCalMonthlyData(monthly);
-      return;
-    }
-    api.get(`/overview/monthly?month=${calMonth}&year=${calYear}`)
-      .then(r => setCalMonthlyData(r.data))
-      .catch(console.error);
+    if (calMonth === month && calYear === year) { setCalMonthlyData(monthly); return; }
+    api.get(`/overview/monthly?month=${calMonth}&year=${calYear}`).then(r => setCalMonthlyData(r.data)).catch(console.error);
   }, [calMonth, calYear, monthly]);
 
-  const dHours = parseFloat(daily?.summary?.total_hours || 0);
+  // ── Derived stats ─────────────────────────────────────────────────────────
+  const sessionsForSelected = selectedDate === today ? todaySessions : (selectedDayData?.sessions || []);
+  const doneSessions   = sessionsForSelected.filter(s => (s.status || 'Done') === 'Done');
+  const pendSessions   = sessionsForSelected.filter(s => s.status === 'Pending');
+  const cfSessions     = sessionsForSelected.filter(s => s.status === 'Carry Forward');
+
+  // Completed subject hours
+  const doneBySubject = {};
+  doneSessions.forEach(s => { doneBySubject[s.subject] = (doneBySubject[s.subject]||0) + parseFloat(s.hours||0); });
+  const doneEntries = Object.entries(doneBySubject).sort((a,b)=>b[1]-a[1]);
+  const doneMaxH = Math.max(...doneEntries.map(([,h])=>h), 1);
+  const doneTotalH = doneEntries.reduce((s,[,h])=>s+h, 0);
+
+  // Pending subject hours
+  const pendBySubject = {};
+  pendSessions.forEach(s => { pendBySubject[s.subject] = (pendBySubject[s.subject]||0) + parseFloat(s.hours||0); });
+  const pendEntries = Object.entries(pendBySubject).sort((a,b)=>b[1]-a[1]);
+  const pendMaxH = Math.max(...pendEntries.map(([,h])=>h), 1);
+  const pendTotalH = pendEntries.reduce((s,[,h])=>s+h, 0);
+
+  const dHours = doneTotalH; // only done hours
   const dailyTarget = parseFloat(settings?.daily_hour_target || 8);
   const dailyPct = Math.min(100, Math.round((dHours / dailyTarget) * 100));
   const mHours = parseFloat(monthly?.summary?.total_hours || 0);
@@ -112,13 +133,9 @@ export default function Dashboard() {
 
   const greeting = now.getHours()<12?'morning':now.getHours()<17?'afternoon':'evening';
   const dayName = now.toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'short',year:'numeric'});
-
   const selDateObj = new Date(selectedDate+'T00:00:00');
   const selDisplay = selDateObj.toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
   const isToday = selectedDate === today;
-  const selHours = parseFloat(selectedDayData?.summary?.total_hours || 0);
-  const selSubjects = selectedDayData?.bySubject || [];
-  const maxSelHrs = Math.max(...selSubjects.map(s=>parseFloat(s.hours)), 1);
   const calMonthName = new Date(calYear, calMonth-1).toLocaleString('default',{month:'long'});
 
   if (loading) return <div style={{ padding:40, color:'var(--text3)' }}>Loading dashboard...</div>;
@@ -149,125 +166,142 @@ export default function Dashboard() {
 
       {/* Metrics */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14, marginBottom:24 }}>
-        <MetricCard label="Today studied" value={`${dHours}h`} sub={`Target: ${dailyTarget}h · ${dailyPct}% done`} color="var(--purple)"/>
-        <MetricCard label="Monthly hours" value={mHours} sub={`Target: ${mTarget} hrs · ${mPct}%`} color="var(--teal)"/>
-        <MetricCard label="Days studied" value={mDays} sub="This month" color="var(--amber)"/>
-        <MetricCard label="Sessions today" value={daily?.summary?.session_count || 0} sub="Logged today" color="var(--green)"/>
+        <MetricCard label="Today completed" value={`${dHours.toFixed(1)}h`} sub={`Target: ${dailyTarget}h · ${dailyPct}% done`} color="var(--purple)"/>
+        <MetricCard label="Pending today" value={`${pendTotalH.toFixed(1)}h`} sub={`${pendSessions.length} sessions · ${cfSessions.length} carried fwd`} color="var(--amber)"/>
+        <MetricCard label="Month studied" value={`${mHours.toFixed(0)}h`} sub={`${mDays} days · target ${mTarget}h`} color="var(--teal)"/>
+        <MetricCard label="Month progress" value={`${mPct}%`} sub={mPct>=100?'Target achieved! 🎉':mPct>=60?'Great pace!':'Keep going!'} color="var(--green)"/>
       </div>
 
-      {/* Main 2-col */}
-      <div style={{ display:'grid', gridTemplateColumns:'1.4fr 1fr', gap:14 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 340px', gap:16, marginBottom:24 }}>
 
-        {/* LEFT */}
-        <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+        {/* ── Completed sessions graph ── */}
+        <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:14, padding:20 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+            <div style={{ fontSize:11, fontWeight:600, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.8px' }}>
+              ✅ Completed — {isToday ? 'Today' : selDisplay.split(',')[0]}
+            </div>
+            <div style={{ fontFamily:'JetBrains Mono,monospace', fontSize:13, fontWeight:600, color:'var(--green)' }}>{doneTotalH.toFixed(1)}h</div>
+          </div>
 
-          {/* Progress bars */}
-          <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:14, padding:20 }}>
-            <div style={{ fontSize:11, fontWeight:600, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.8px', marginBottom:16 }}>Today's Progress</div>
-            {[
-              { label:'Daily target', stat:`${dHours} / ${dailyTarget} hrs · ${dailyPct}%`, pct:dailyPct, color:'var(--purple)' },
-              { label:'Monthly target', stat:`${mHours} / ${mTarget} hrs · ${mPct}%`, pct:mPct, color:'var(--teal)' },
-            ].map(p => (
-              <div key={p.label} style={{ marginBottom:16 }}>
-                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
-                  <span style={{ fontSize:13 }}>{p.label}</span>
-                  <span style={{ fontFamily:'JetBrains Mono,monospace', fontSize:12, color:'var(--text2)' }}>{p.stat}</span>
+          {doneEntries.length === 0 ? (
+            <div style={{ fontSize:13, color:'var(--text3)', textAlign:'center', padding:'24px 0' }}>
+              <div style={{ fontSize:28, marginBottom:8 }}>📚</div>
+              No completed sessions yet
+            </div>
+          ) : (
+            <div>
+              {doneEntries.map(([subject, hours]) => {
+                const color = getColor(subject);
+                const w = Math.round((hours / doneMaxH) * 100);
+                const pct = doneTotalH > 0 ? Math.round((hours/doneTotalH)*100) : 0;
+                return (
+                  <div key={subject} style={{ marginBottom:14 }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', marginBottom:5 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                        <div style={{ width:8, height:8, borderRadius:'50%', background:color, flexShrink:0 }}></div>
+                        <span style={{ fontSize:13 }}>{subject}</span>
+                        <span style={{ fontSize:10, color:'var(--text3)', background:'var(--green-dim)', color:'var(--green)', padding:'1px 6px', borderRadius:4 }}>{pct}%</span>
+                      </div>
+                      <span style={{ fontFamily:'JetBrains Mono,monospace', fontSize:12, color }}>{hours.toFixed(1)}h</span>
+                    </div>
+                    <div style={{ height:6, background:'var(--surface2)', borderRadius:3, overflow:'hidden' }}>
+                      <div style={{ height:'100%', width:`${w}%`, background:color, borderRadius:3, transition:'width 0.4s' }}></div>
+                    </div>
+                  </div>
+                );
+              })}
+              {/* Completion bar */}
+              <div style={{ marginTop:16, paddingTop:14, borderTop:'1px solid var(--border)' }}>
+                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:5 }}>
+                  <span style={{ fontSize:11, color:'var(--text2)' }}>Daily target</span>
+                  <span style={{ fontFamily:'JetBrains Mono,monospace', fontSize:11, color:'var(--text3)' }}>{dHours.toFixed(1)} / {dailyTarget}h</span>
                 </div>
-                <div style={{ height:6, background:'var(--surface2)', borderRadius:3, overflow:'hidden' }}>
-                  <div style={{ height:'100%', width:`${p.pct}%`, background:p.color, borderRadius:3, transition:'width 0.6s ease' }}></div>
+                <div style={{ height:8, background:'var(--surface2)', borderRadius:4, overflow:'hidden' }}>
+                  <div style={{ height:'100%', width:`${dailyPct}%`, background:'linear-gradient(90deg,var(--purple),var(--teal))', borderRadius:4, transition:'width 0.5s' }}></div>
                 </div>
               </div>
-            ))}
-            <div style={{ borderTop:'1px solid var(--border)', paddingTop:14, marginTop:2 }}>
-              <div style={{ fontSize:11, fontWeight:600, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.8px', marginBottom:10 }}>Today's subjects</div>
-              {(daily?.bySubject||[]).length===0 && <p style={{ fontSize:13, color:'var(--text3)' }}>No sessions logged today yet</p>}
-              {(daily?.bySubject||[]).map(s => (
-                <div key={s.subject} style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
-                  <div style={{ width:8, height:8, borderRadius:'50%', background:getColor(s.subject), flexShrink:0 }}></div>
-                  <div style={{ flex:1, fontSize:13 }}>{s.subject}</div>
-                  <div style={{ fontFamily:'JetBrains Mono,monospace', fontSize:12, color:'var(--text2)' }}>{s.hours}h</div>
+            </div>
+          )}
+        </div>
+
+        {/* ── Pending sessions graph ── */}
+        <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:14, padding:20 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+            <div style={{ fontSize:11, fontWeight:600, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.8px' }}>
+              ⏳ Pending — {isToday ? 'Today' : selDisplay.split(',')[0]}
+            </div>
+            <div style={{ fontFamily:'JetBrains Mono,monospace', fontSize:13, fontWeight:600, color:'var(--amber)' }}>{pendTotalH.toFixed(1)}h</div>
+          </div>
+
+          {pendEntries.length === 0 ? (
+            <div style={{ fontSize:13, color:'var(--text3)', textAlign:'center', padding:'24px 0' }}>
+              <div style={{ fontSize:28, marginBottom:8 }}>{cfSessions.length > 0 ? '➡️' : '🎉'}</div>
+              {cfSessions.length > 0 ? `${cfSessions.length} session(s) carried forward` : 'No pending sessions!'}
+            </div>
+          ) : (
+            <div>
+              {pendEntries.map(([subject, hours]) => {
+                const color = 'var(--amber)';
+                const w = Math.round((hours / pendMaxH) * 100);
+                const pct = pendTotalH > 0 ? Math.round((hours/pendTotalH)*100) : 0;
+                return (
+                  <div key={subject} style={{ marginBottom:14 }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', marginBottom:5 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                        <div style={{ width:8, height:8, borderRadius:'50%', background:'var(--amber)', flexShrink:0 }}></div>
+                        <span style={{ fontSize:13 }}>{subject}</span>
+                        <span style={{ fontSize:10, background:'var(--amber-dim)', color:'var(--amber)', padding:'1px 6px', borderRadius:4 }}>{pct}%</span>
+                      </div>
+                      <span style={{ fontFamily:'JetBrains Mono,monospace', fontSize:12, color:'var(--amber)' }}>{hours.toFixed(1)}h</span>
+                    </div>
+                    <div style={{ height:6, background:'var(--surface2)', borderRadius:3, overflow:'hidden' }}>
+                      <div style={{ height:'100%', width:`${w}%`, background:'var(--amber)', borderRadius:3, opacity:0.7 }}></div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {cfSessions.length > 0 && (
+                <div style={{ marginTop:12, padding:'8px 12px', borderRadius:8, background:'var(--purple-dim)', border:'1px solid rgba(124,111,255,0.2)', fontSize:12, color:'var(--purple)' }}>
+                  ➡️ {cfSessions.length} session(s) carried forward to another day
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Today's quick list */}
+          {pendSessions.length > 0 && (
+            <div style={{ marginTop:16, paddingTop:14, borderTop:'1px solid var(--border)' }}>
+              <div style={{ fontSize:11, color:'var(--text3)', marginBottom:8 }}>Sessions to complete:</div>
+              {pendSessions.map(s => (
+                <div key={s.id} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6, fontSize:12, color:'var(--text2)' }}>
+                  <span>⏳</span>
+                  <span>{s.subject}</span>
+                  <span style={{ color:'var(--text3)' }}>·</span>
+                  <span style={{ color:'var(--text3)' }}>{s.slot}</span>
+                  <span style={{ marginLeft:'auto', fontFamily:'JetBrains Mono,monospace', color:'var(--amber)', fontSize:11 }}>{s.hours}h</span>
                 </div>
               ))}
             </div>
-          </div>
-
-          {/* Selected date subject breakdown */}
-          <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:14, padding:20 }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
-              <div>
-                <div style={{ fontSize:11, fontWeight:600, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.8px' }}>
-                  {isToday ? 'Today' : 'Selected day'} — subject breakdown
-                </div>
-                <div style={{ fontSize:12, color:'var(--purple)', marginTop:3 }}>{selDisplay}</div>
-              </div>
-              <div style={{ fontFamily:'JetBrains Mono,monospace', fontSize:14, fontWeight:600, color:'var(--teal)' }}>{selHours}h total</div>
-            </div>
-
-            {loadingDay && <div style={{ fontSize:13, color:'var(--text3)', padding:'10px 0' }}>Loading...</div>}
-
-            {!loadingDay && selSubjects.length === 0 && (
-              <div style={{ fontSize:13, color:'var(--text3)', padding:'10px 0', textAlign:'center' }}>
-                <div style={{ fontSize:24, marginBottom:6 }}>📭</div>
-                No sessions on {selDisplay}
-              </div>
-            )}
-
-            {!loadingDay && selSubjects.map(s => {
-              const hrs = parseFloat(s.hours);
-              const w = Math.round(hrs/maxSelHrs*100);
-              const color = getColor(s.subject);
-              return (
-                <div key={s.subject} style={{ marginBottom:12 }}>
-                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:5 }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                      <div style={{ width:8, height:8, borderRadius:'50%', background:color, flexShrink:0 }}></div>
-                      <span style={{ fontSize:13 }}>{s.subject}</span>
-                    </div>
-                    <span style={{ fontFamily:'JetBrains Mono,monospace', fontSize:12, color }}>{hrs}h</span>
-                  </div>
-                  <div style={{ height:6, background:'var(--surface2)', borderRadius:3, overflow:'hidden' }}>
-                    <div style={{ height:'100%', width:`${w}%`, background:color, borderRadius:3, transition:'width 0.4s' }}></div>
-                  </div>
-                  {(selectedDayData?.sessions||[]).filter(ss=>ss.subject===s.subject).map(ss => (
-                    <div key={ss.id} style={{ fontSize:11, color:'var(--text3)', marginTop:3, marginLeft:16 }}>
-                      · {ss.slot} {ss.notes ? `— ${ss.notes}` : ''}
-                    </div>
-                  ))}
-                </div>
-              );
-            })}
-          </div>
+          )}
         </div>
 
-        {/* RIGHT — Calendar */}
+        {/* ── Calendar ── */}
         <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:14, padding:20 }}>
-
-          {/* Calendar header */}
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
-            <div style={{ fontSize:11, fontWeight:600, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.8px' }}>
-              Study Calendar
-            </div>
+            <div style={{ fontSize:11, fontWeight:600, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.8px' }}>Study Calendar</div>
             <div style={{ display:'flex', alignItems:'center', gap:6 }}>
               <button onClick={prevCalMonth} style={{ background:'none', border:'none', color:'var(--text2)', cursor:'pointer', fontSize:16, padding:'0 4px', lineHeight:1 }}>←</button>
-              <span style={{ fontFamily:'JetBrains Mono,monospace', fontSize:12, color:'var(--text)', minWidth:96, textAlign:'center' }}>
-                {calMonthName} {calYear}
-              </span>
+              <span style={{ fontFamily:'JetBrains Mono,monospace', fontSize:12, color:'var(--text)', minWidth:96, textAlign:'center' }}>{calMonthName} {calYear}</span>
               <button onClick={nextCalMonth} style={{ background:'none', border:'none', color:'var(--text2)', cursor:'pointer', fontSize:16, padding:'0 4px', lineHeight:1 }}>→</button>
             </div>
           </div>
-
-          <div style={{ fontSize:11, color:'var(--text2)', marginBottom:12 }}>
-            Click any date to see subject breakdown
-          </div>
-
-          {/* Day headers */}
+          <div style={{ fontSize:11, color:'var(--text2)', marginBottom:12 }}>Click any date to see breakdown</div>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:4, marginBottom:4 }}>
             {['S','M','T','W','T','F','S'].map((d,i) => (
               <div key={i} style={{ fontSize:10, color:'var(--text3)', textAlign:'center', fontWeight:600 }}>{d}</div>
             ))}
           </div>
-
-          {/* Calendar cells */}
           <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:4 }}>
             {heatCells.map((cell, i) => {
               if (!cell) return <div key={i}/>;
@@ -275,36 +309,22 @@ export default function Dashboard() {
               const isToday2 = cell.date === today;
               const hasData = cell.hours > 0;
               return (
-                <div key={i}
-                  onClick={() => setSelectedDate(cell.date)}
-                  style={{
-                    aspectRatio:'1', borderRadius:8,
-                    background: isSelected ? '#7C6FFF' : heatColor(cell.hours),
-                    display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                    cursor:'pointer', position:'relative',
-                    boxShadow: isToday2 && !isSelected ? '0 0 0 2px #7C6FFF' : '0 1px 3px rgba(0,0,0,0.08)',
-                    transform: isSelected ? 'scale(1.1)' : 'scale(1)',
-                    transition:'all 0.15s ease',
-                    zIndex: isSelected ? 2 : 1,
-                    border: isSelected ? 'none' : '1px solid var(--border)',
-                  }}
-                  title={`${cell.day} ${calMonthName}: ${cell.hours>=0?cell.hours+'h':'No data'}`}
-                >
-                  <div style={{
-                    fontSize:10,
-                    fontFamily:'JetBrains Mono,monospace',
-                    color: isSelected ? '#fff' : hasData ? '#fff' : 'var(--text2)',
-                    fontWeight: isSelected || hasData ? 600 : 400,
-                  }}>{cell.day}</div>
-                  {hasData && !isSelected && (
-                    <div style={{ fontSize:8, color:'rgba(255,255,255,0.85)', marginTop:1 }}>{cell.hours}h</div>
-                  )}
+                <div key={i} onClick={() => setSelectedDate(cell.date)} style={{
+                  aspectRatio:'1', borderRadius:8,
+                  background: isSelected ? '#7C6FFF' : heatColor(cell.hours),
+                  display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                  cursor:'pointer', position:'relative',
+                  boxShadow: isToday2 && !isSelected ? '0 0 0 2px #7C6FFF' : '0 1px 3px rgba(0,0,0,0.08)',
+                  transform: isSelected ? 'scale(1.1)' : 'scale(1)',
+                  transition:'all 0.15s ease', zIndex: isSelected ? 2 : 1,
+                  border: isSelected ? 'none' : '1px solid var(--border)',
+                }} title={`${cell.day} ${calMonthName}: ${cell.hours>=0?cell.hours+'h':'No data'}`}>
+                  <div style={{ fontSize:10, fontFamily:'JetBrains Mono,monospace', color: isSelected ? '#fff' : hasData ? '#fff' : 'var(--text2)', fontWeight: isSelected || hasData ? 600 : 400 }}>{cell.day}</div>
+                  {hasData && !isSelected && <div style={{ fontSize:8, color:'rgba(255,255,255,0.85)', marginTop:1 }}>{cell.hours}h</div>}
                 </div>
               );
             })}
           </div>
-
-          {/* Legend */}
           <div style={{ display:'flex', gap:8, marginTop:14, flexWrap:'wrap' }}>
             {[['var(--surface2)','Rest'],['#6B5CE7','<4h'],['#7C6FFF','4–6h'],['#9B8FFF','6–8h'],['#B4AEFF','8+h']].map(([c,l]) => (
               <span key={l} style={{ display:'flex', alignItems:'center', gap:4, fontSize:10, color:'var(--text3)' }}>
@@ -312,19 +332,65 @@ export default function Dashboard() {
               </span>
             ))}
           </div>
-
-          {/* Selected date quick info */}
           {selectedDate && (
             <div style={{ marginTop:16, padding:'12px 14px', background:'var(--surface2)', borderRadius:10, border:'1px solid var(--border)' }}>
               <div style={{ fontSize:12, color:'var(--text2)', marginBottom:4 }}>
                 {isToday ? '📅 Today' : `📅 ${new Date(selectedDate+'T00:00:00').toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}`}
               </div>
-              <div style={{ fontFamily:'JetBrains Mono,monospace', fontSize:18, fontWeight:600, color:'var(--purple)' }}>{selHours}h</div>
+              <div style={{ fontFamily:'JetBrains Mono,monospace', fontSize:18, fontWeight:600, color:'var(--purple)' }}>{dHours.toFixed(1)}h</div>
               <div style={{ fontSize:11, color:'var(--text3)', marginTop:2 }}>
-                {selectedDayData?.summary?.session_count || 0} sessions · {selSubjects.length} subjects
+                {doneSessions.length} done · {pendSessions.length} pending · {cfSessions.length} carried fwd
               </div>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Today's subjects bottom section */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+        <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:14, padding:20 }}>
+          <div style={{ fontSize:11, fontWeight:600, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.8px', marginBottom:12 }}>Today's subjects</div>
+          {(daily?.bySubject||[]).length===0 && <p style={{ fontSize:13, color:'var(--text3)' }}>No sessions logged today yet</p>}
+          {(daily?.bySubject||[]).map(s => (
+            <div key={s.subject} style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
+              <div style={{ width:8, height:8, borderRadius:'50%', background:getColor(s.subject), flexShrink:0 }}></div>
+              <div style={{ flex:1, fontSize:13 }}>{s.subject}</div>
+              <div style={{ fontFamily:'JetBrains Mono,monospace', fontSize:12, color:'var(--text2)' }}>{s.hours}h</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:14, padding:20 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+            <div style={{ fontSize:11, fontWeight:600, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.8px' }}>
+              {isToday ? 'Today' : 'Selected day'} — subject breakdown
+            </div>
+            <div style={{ fontSize:12, color:'var(--purple)' }}>{selDisplay.split(',')[0]}</div>
+          </div>
+          {loadingDay && <div style={{ fontSize:13, color:'var(--text3)' }}>Loading...</div>}
+          {!loadingDay && doneEntries.length === 0 && (
+            <div style={{ fontSize:13, color:'var(--text3)', textAlign:'center', padding:'10px 0' }}>
+              <div style={{ fontSize:24, marginBottom:6 }}>📭</div>No completed sessions on this date
+            </div>
+          )}
+          {!loadingDay && doneEntries.map(([subject, hours]) => {
+            const w = Math.round(hours/doneMaxH*100);
+            const color = getColor(subject);
+            return (
+              <div key={subject} style={{ marginBottom:12 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:5 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                    <div style={{ width:8, height:8, borderRadius:'50%', background:color, flexShrink:0 }}></div>
+                    <span style={{ fontSize:13 }}>{subject}</span>
+                  </div>
+                  <span style={{ fontFamily:'JetBrains Mono,monospace', fontSize:12, color }}>{hours.toFixed(1)}h</span>
+                </div>
+                <div style={{ height:6, background:'var(--surface2)', borderRadius:3, overflow:'hidden' }}>
+                  <div style={{ height:'100%', width:`${w}%`, background:color, borderRadius:3, transition:'width 0.4s' }}></div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
