@@ -49,15 +49,26 @@ router.post('/create', auth, async (req, res) => {
 
     // Create Razorpay customer
     let customerId = user.razorpay_customer_id;
-    if (!customerId) {
-      const customer = await razorpay.customers.create({
-        name: user.name,
-        email: user.email,
-        contact: req.body.phone || '',
-      });
-      customerId = customer.id;
-      await pool.query('UPDATE users SET razorpay_customer_id=$1 WHERE id=$2', [customerId, user.id]);
+if (!customerId) {
+  try {
+    const customer = await razorpay.customers.create({
+      name: user.name,
+      email: user.email,
+      contact: req.body.phone || '',
+    });
+    customerId = customer.id;
+  } catch (custErr) {
+    // Customer already exists — fetch by email
+    const customers = await razorpay.customers.all({ count: 1 });
+    const existing = customers.items?.find(c => c.email === user.email);
+    if (existing) {
+      customerId = existing.id;
+    } else {
+      throw new Error('Could not create or find customer');
     }
+  }
+  await pool.query('UPDATE users SET razorpay_customer_id=$1 WHERE id=$2', [customerId, user.id]);
+}
 
     // Create subscription with 30 day trial
     const plan = req.body.plan === 'yearly'
