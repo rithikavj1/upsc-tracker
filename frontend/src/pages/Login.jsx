@@ -19,8 +19,21 @@ export default function Login() {
       const payload = isRegister ? form : { email: form.email, password: form.password };
       const { data } = await api.post(endpoint, payload);
       localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
-      navigate('/dashboard');
+localStorage.setItem('user', JSON.stringify(data.user));
+
+// Check if user has active subscription or trial
+const status = data.user?.subscription_status;
+const trialEnd = data.user?.trial_end ? new Date(data.user.trial_end) : null;
+const now = new Date();
+const trialActive = status === 'trial' && trialEnd && now < trialEnd;
+const isPro = status === 'active';
+
+if (trialActive || isPro) {
+  navigate('/dashboard');
+} else {
+  // Trial expired or no subscription — go to subscription page
+  navigate('/subscription');
+}
     } catch (err) {
       setError(err.response?.data?.error || 'Something went wrong');
     } finally {
