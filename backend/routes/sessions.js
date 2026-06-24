@@ -134,7 +134,24 @@ router.patch('/:id/status', auth, async (req, res) => {
       'UPDATE study_sessions SET status=$1 WHERE id=$2 AND user_id=$3 RETURNING *',
       [status, req.params.id, req.user.id]
     );
-    res.json(r.rows[0]);
+    const session = r.rows[0];
+
+    // Sync to weekly_sessions — tick/untick based on status
+    try {
+      const completed = status === 'Done';
+      await pool.query(
+        `UPDATE weekly_sessions 
+         SET completed=$1
+         WHERE user_id=$2 AND session_date=$3 AND subject=$4
+         AND (time_slot=$5 OR time_slot='Daily Entry' OR session_name=$5)`,
+        [completed, req.user.id, session.date, session.subject, session.slot || 'Daily Entry']
+      );
+      console.log(`✅ Weekly tracker synced: ${session.subject} on ${session.date} → ${status}`);
+    } catch (syncErr) {
+      console.log('⚠️ Weekly sync skipped:', syncErr.message);
+    }
+
+    res.json(session);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
