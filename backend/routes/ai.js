@@ -28,6 +28,7 @@ router.post('/chat', auth, async (req, res) => {
     );
 
     const data = await response.json();
+    console.log('Gemini response:', JSON.stringify(data));
     const reply = data.candidates?.[0]?.content?.parts?.[0]?.text
       || 'Sorry, I could not generate a response. Please try again.';
 
