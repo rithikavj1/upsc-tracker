@@ -5,62 +5,77 @@ const CHAT_STORAGE_KEY = 'upsc_ai_chat_history';
 
 const WELCOME_MSG = (name) => `Hi ${name || 'there'}! 👋 I'm your personal UPSC AI Tutor.
 
-I have access to your real study data and can search the web for UPSC resources, topper answer copies, articles, and study material.
+I have access to your real study data and a curated database of verified UPSC resources.
 
-I can help you with:
+Ask me for:
 - 📊 **Today's performance review** based on your actual sessions
-- 📚 **Subject resources** — articles, PDFs, topper copies with real links
-- 🏆 **Topper strategy** comparisons with your current pace
+- 📚 **Study resources** — monthly magazines, topper copies, NCERT PDFs with working links
+- 🏆 **Topper strategies** — Tina Dabi, Srushti Deshmukh, Kanishak Kataria
 - 🎯 **Personalized plans** based on your weak subjects
 
 What would you like to work on today?`;
 
 const SUGGESTIONS = [
   "Review my study progress today",
-  "Find topper answer copies for Mains",
-  "NCERT PDF links for Geography",
+  "Monthly current affairs magazine links",
+  "UPSC topper answer copies",
   "Which subject needs more attention?",
-  "Give me a 30-day Polity plan",
-  "Current affairs resources and links",
+  "NCERT PDF download links",
+  "Previous year question papers",
 ];
 
-// ── Download AI response as PDF ───────────────────────────────────────────
-const downloadAsPDF = (content, title = 'UPSC AI Tutor Response') => {
+// ── Real PDF download using browser print ────────────────────────────────
+const downloadAsPDF = (content, links = []) => {
   const clean = content
     .replace(/\*\*(.*?)\*\*/g, '$1')
     .replace(/\*(.*?)\*/g, '$1')
-    .replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g, '$1 ($2)')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g, '$1 → $2')
     .replace(/<[^>]+>/g, '')
-    .replace(/\n\n/g, '\n');
+    .replace(/\n{3,}/g, '\n\n');
 
-  const html = `<!DOCTYPE html>
+  const linksHtml = links.length > 0
+    ? `<div class="links-section">
+        <h3>📎 Resources & Links</h3>
+        ${links.map(l => `<a href="${l.url}" target="_blank">${l.title}</a>`).join('')}
+       </div>`
+    : '';
+
+  const printWindow = window.open('', '_blank');
+  printWindow.document.write(`<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
-<title>${title}</title>
+<title>UPSC AI Tutor — ${new Date().toLocaleDateString('en-IN')}</title>
 <style>
-  body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; color: #333; line-height: 1.6; }
-  h1 { color: #7C6FFF; border-bottom: 2px solid #7C6FFF; padding-bottom: 10px; }
-  h2 { color: #555; margin-top: 20px; }
-  .meta { color: #888; font-size: 12px; margin-bottom: 20px; }
-  pre { white-space: pre-wrap; font-family: Arial, sans-serif; }
-  a { color: #7C6FFF; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 40px 32px; color: #1a1a2e; line-height: 1.7; }
+  .header { background: linear-gradient(135deg, #7C6FFF, #2DD4BF); color: white; padding: 20px 24px; border-radius: 12px; margin-bottom: 24px; }
+  .header h1 { font-size: 20px; font-weight: 700; }
+  .header .meta { font-size: 12px; opacity: 0.85; margin-top: 4px; }
+  .content { font-size: 14px; line-height: 1.8; white-space: pre-wrap; }
+  .links-section { margin-top: 24px; padding: 16px; background: #f0efff; border-radius: 8px; border-left: 3px solid #7C6FFF; }
+  .links-section h3 { font-size: 13px; color: #7C6FFF; margin-bottom: 12px; font-weight: 700; }
+  .links-section a { display: block; color: #7C6FFF; text-decoration: none; font-size: 13px; padding: 4px 0; border-bottom: 1px solid #e0deff; }
+  .links-section a:last-child { border-bottom: none; }
+  .footer { margin-top: 24px; font-size: 11px; color: #888; text-align: center; }
+  @media print { body { padding: 20px; } }
 </style>
 </head>
 <body>
-<h1>🤖 UPSC AI Tutor</h1>
-<div class="meta">Generated on ${new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
-<pre>${clean}</pre>
+<div class="header">
+  <h1>🤖 UPSC AI Tutor Response</h1>
+  <div class="meta">Generated on ${new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })} · UPSC Tracker</div>
+</div>
+<div class="content">${clean}</div>
+${linksHtml}
+<div class="footer">UPSC Tracker · AI-powered personalized mentoring · upsc-tracker-ochre.vercel.app</div>
 </body>
-</html>`;
-
-  const blob = new Blob([html], { type: 'text/html' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `UPSC-AI-Tutor-${new Date().toISOString().slice(0,10)}.html`;
-  a.click();
-  URL.revokeObjectURL(url);
+</html>`);
+  printWindow.document.close();
+  printWindow.focus();
+  setTimeout(() => {
+    printWindow.print();
+  }, 500);
 };
 
 export default function AITutor() {
@@ -75,9 +90,7 @@ export default function AITutor() {
   useEffect(() => { init(); }, []);
 
   useEffect(() => {
-    if (messages.length > 0) {
-      localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages));
-    }
+    if (messages.length > 0) localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages));
   }, [messages]);
 
   useEffect(() => {
@@ -93,7 +106,7 @@ export default function AITutor() {
         const parsed = JSON.parse(saved);
         if (parsed.length > 0) { setMessages(parsed); setCheckingAccess(false); return; }
       }
-      setMessages([{ role: 'assistant', content: WELCOME_MSG(user.name), id: Date.now() }]);
+      setMessages([{ role: 'assistant', content: WELCOME_MSG(user.name), id: Date.now(), links: [] }]);
     } catch(e) { console.error(e); }
     finally { setCheckingAccess(false); }
   };
@@ -102,14 +115,14 @@ export default function AITutor() {
     if (!confirm('Clear chat history?')) return;
     localStorage.removeItem(CHAT_STORAGE_KEY);
     const user = JSON.parse(localStorage.getItem('user') || '{}');
-    setMessages([{ role: 'assistant', content: WELCOME_MSG(user.name), id: Date.now() }]);
+    setMessages([{ role: 'assistant', content: WELCOME_MSG(user.name), id: Date.now(), links: [] }]);
   };
 
   const sendMessage = async (text) => {
     const userMsg = text || input.trim();
     if (!userMsg || loading) return;
     setInput('');
-    const newMessages = [...messages, { role: 'user', content: userMsg, id: Date.now() }];
+    const newMessages = [...messages, { role: 'user', content: userMsg, id: Date.now(), links: [] }];
     setMessages(newMessages);
     setLoading(true);
     try {
@@ -134,32 +147,29 @@ export default function AITutor() {
     return text
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
       .replace(/\*(.*?)\*/g, '<em>$1</em>')
-      .replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" style="color:var(--purple);text-decoration:underline;word-break:break-all">$1 ↗</a>')
+      .replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g,
+        '<a href="$2" target="_blank" rel="noopener noreferrer" style="color:#7C6FFF;text-decoration:underline;font-weight:500">$1 ↗</a>')
       .replace(/^### (.*$)/gm, '<h4 style="color:var(--text);font-size:13px;font-weight:700;margin:12px 0 6px">$1</h4>')
       .replace(/^## (.*$)/gm, '<h3 style="color:var(--text);font-size:14px;font-weight:700;margin:14px 0 8px">$1</h3>')
-      .replace(/^- (.*$)/gm, '<li style="margin:3px 0;padding-left:4px">$1</li>')
-      .replace(/(<li.*<\/li>)/gs, '<ul style="margin:8px 0;padding-left:16px;list-style:disc">$1</ul>')
+      .replace(/^- (.*$)/gm, '<li style="margin:4px 0;padding-left:4px">$1</li>')
+      .replace(/(<li[^>]*>.*<\/li>)/gs, '<ul style="margin:8px 0;padding-left:18px;list-style:disc">$1</ul>')
       .replace(/\n\n/g, '<br/><br/>')
       .replace(/\n/g, '<br/>');
   };
 
   const st = {
-    page: { padding: '32px 40px', maxWidth: 920, margin: '0 auto', height: 'calc(100vh - 68px)', display: 'flex', flexDirection: 'column' },
-    header: { marginBottom: 16, flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' },
+    page: { padding: '28px 40px', maxWidth: 920, margin: '0 auto', height: 'calc(100vh - 60px)', display: 'flex', flexDirection: 'column' },
     title: { fontSize: 22, fontWeight: 700, letterSpacing: '-.5px', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 10 },
-    badge: { background: 'linear-gradient(135deg,#7C6FFF,#2DD4BF)', color: '#fff', fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20, letterSpacing: '.5px' },
-    sub: { fontSize: 13, color: 'var(--text2)' },
+    badge: { background: 'linear-gradient(135deg,#7C6FFF,#2DD4BF)', color: '#fff', fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20 },
     chatWrap: { flex: 1, overflowY: 'auto', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 20, display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 12 },
     msgRow: (role) => ({ display: 'flex', justifyContent: role === 'user' ? 'flex-end' : 'flex-start', gap: 10, alignItems: 'flex-start' }),
     avatar: (role) => ({ width: 32, height: 32, borderRadius: '50%', flexShrink: 0, background: role === 'user' ? 'var(--purple)' : 'linear-gradient(135deg,#7C6FFF,#2DD4BF)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: '#fff', fontWeight: 700 }),
-    bubble: (role) => ({ maxWidth: '78%', padding: '12px 16px', borderRadius: role === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px', background: role === 'user' ? 'var(--purple)' : 'var(--surface2)', border: role === 'user' ? 'none' : '1px solid var(--border)', color: role === 'user' ? '#fff' : 'var(--text)', fontSize: 14, lineHeight: 1.65 }),
-    suggestions: { display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12, flexShrink: 0 },
-    chip: { padding: '7px 14px', borderRadius: 20, fontSize: 12, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text2)', cursor: 'pointer', transition: 'all .15s', fontWeight: 500 },
-    inputRow: { display: 'flex', gap: 10, flexShrink: 0 },
+    bubble: (role) => ({ maxWidth: '78%', padding: '12px 16px', borderRadius: role === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px', background: role === 'user' ? 'var(--purple)' : 'var(--surface2)', border: role === 'user' ? 'none' : '1px solid var(--border)', color: role === 'user' ? '#fff' : 'var(--text)', fontSize: 14, lineHeight: 1.7 }),
+    chip: { padding: '7px 14px', borderRadius: 20, fontSize: 12, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text2)', cursor: 'pointer', fontWeight: 500 },
     input: { flex: 1, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 16px', fontSize: 14, color: 'var(--text)', fontFamily: 'Sora,sans-serif', outline: 'none', resize: 'none', lineHeight: 1.5 },
-    sendBtn: { width: 48, height: 48, borderRadius: 12, background: 'var(--purple)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+    sendBtn: { width: 48, height: 48, borderRadius: 12, background: 'var(--purple)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
     typing: { display: 'flex', gap: 4, padding: '12px 16px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '18px 18px 18px 4px', width: 'fit-content' },
-    dot: (i) => ({ width: 8, height: 8, borderRadius: '50%', background: 'var(--purple)', opacity: .4, animation: `bounce 1.2s ${i * 0.2}s infinite` }),
+    dot: (i) => ({ width: 8, height: 8, borderRadius: '50%', background: 'var(--purple)', opacity: .4, animation: `bounce 1.2s ${i*0.2}s infinite` }),
   };
 
   if (checkingAccess) return (
@@ -172,62 +182,75 @@ export default function AITutor() {
     <>
       <style>{`
         @keyframes bounce { 0%,60%,100%{transform:translateY(0);opacity:.4} 30%{transform:translateY(-6px);opacity:1} }
-        .suggestion-chip:hover { background: var(--purple-dim) !important; border-color: var(--purple) !important; color: var(--purple) !important; }
-        .chat-input:focus { border-color: var(--purple) !important; }
-        .link-btn:hover { background: var(--purple-dim) !important; border-color: var(--purple) !important; }
-        .clear-btn:hover { color: var(--red) !important; border-color: var(--red) !important; }
+        .s-chip:hover { background:var(--purple-dim)!important; border-color:var(--purple)!important; color:var(--purple)!important; }
+        .chat-input:focus { border-color:var(--purple)!important; }
+        .res-link:hover { background:var(--purple-dim)!important; border-color:var(--purple)!important; color:var(--purple)!important; }
+        .dl-btn:hover { opacity:0.8; }
       `}</style>
       <div style={st.page}>
-        <div style={st.header}>
+        {/* Header */}
+        <div style={{ marginBottom: 16, flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <div style={st.title}>🤖 AI Tutor <span style={st.badge}>PRO</span></div>
-            <div style={st.sub}>Reads your real study data · Web search for resources · Powered by LLaMA 3.3</div>
+            <div style={{ fontSize: 13, color: 'var(--text2)' }}>Real study data · Verified UPSC links · Powered by LLaMA 3.3</div>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <span style={{ fontSize: 11, color: 'var(--text3)' }}>{messages.length > 1 ? `${messages.length - 1} messages` : ''}</span>
-            <button className="clear-btn" onClick={clearChat} style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text3)', borderRadius: 8, padding: '6px 12px', fontSize: 12, cursor: 'pointer', transition: 'all .15s' }}>🗑 Clear</button>
+            {messages.length > 1 && <span style={{ fontSize: 11, color: 'var(--text3)' }}>{messages.length - 1} messages</span>}
+            <button onClick={clearChat} style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text3)', borderRadius: 8, padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}>🗑 Clear</button>
           </div>
         </div>
 
+        {/* Chat */}
         <div style={st.chatWrap}>
           {messages.map((msg) => (
             <div key={msg.id} style={st.msgRow(msg.role)}>
               {msg.role === 'assistant' && <div style={st.avatar('assistant')}>🤖</div>}
-              <div style={{ maxWidth: '78%' }}>
+              <div style={{ maxWidth: '78%', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {/* Message bubble */}
                 <div style={st.bubble(msg.role)}>
                   {msg.role === 'assistant'
                     ? <div dangerouslySetInnerHTML={{ __html: formatMessage(msg.content) }}/>
                     : msg.content}
                 </div>
 
-                {/* Resource links */}
+                {/* Resource links panel */}
                 {msg.role === 'assistant' && msg.links && msg.links.length > 0 && (
-                  <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <div style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 2 }}>📎 Resources & Links</div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                      {msg.links.slice(0, 8).map((link, i) => (
-                        <a key={i} href={link.url} target="_blank" rel="noopener noreferrer"
-                          className="link-btn"
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 20, fontSize: 12, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text2)', textDecoration: 'none', transition: 'all .15s', cursor: 'pointer' }}>
-                          🔗 {link.title.length > 40 ? link.title.slice(0, 40) + '...' : link.title}
+                  <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 14 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.6px', marginBottom: 10 }}>
+                      📎 Resources & Links ({msg.links.length})
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+                      {msg.links.slice(0, 10).map((link, i) => (
+                        <a
+                          key={i}
+                          href={link.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="res-link"
+                          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderRadius: 8, background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)', textDecoration: 'none', fontSize: 13, transition: 'all .15s', cursor: 'pointer' }}
+                        >
+                          <span style={{ flex: 1 }}>🔗 {link.title}</span>
+                          <span style={{ fontSize: 11, color: 'var(--purple)', marginLeft: 8, flexShrink: 0 }}>Open ↗</span>
                         </a>
                       ))}
                     </div>
-
-                    {/* Download as PDF button */}
                     <button
-                      onClick={() => downloadAsPDF(msg.content)}
-                      style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 20, fontSize: 12, background: 'var(--teal-dim)', border: '1px solid rgba(45,212,191,0.3)', color: 'var(--teal)', cursor: 'pointer', marginTop: 2, transition: 'all .15s' }}>
+                      className="dl-btn"
+                      onClick={() => downloadAsPDF(msg.content, msg.links)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, background: 'var(--purple)', border: 'none', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'opacity .15s' }}
+                    >
                       ⬇️ Download as PDF
                     </button>
                   </div>
                 )}
 
-                {/* Download button for any long AI response */}
-                {msg.role === 'assistant' && (!msg.links || msg.links.length === 0) && msg.content.length > 300 && (
+                {/* Download for long responses without links */}
+                {msg.role === 'assistant' && (!msg.links || msg.links.length === 0) && msg.content.length > 400 && (
                   <button
-                    onClick={() => downloadAsPDF(msg.content)}
-                    style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 20, fontSize: 11, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text3)', cursor: 'pointer' }}>
+                    className="dl-btn"
+                    onClick={() => downloadAsPDF(msg.content, [])}
+                    style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text3)', fontSize: 12, cursor: 'pointer' }}
+                  >
                     ⬇️ Download response
                   </button>
                 )}
@@ -240,33 +263,33 @@ export default function AITutor() {
             <div style={st.msgRow('assistant')}>
               <div style={st.avatar('assistant')}>🤖</div>
               <div style={st.typing}>
-                <div style={st.dot(0)}></div>
-                <div style={st.dot(1)}></div>
-                <div style={st.dot(2)}></div>
+                <div style={st.dot(0)}/><div style={st.dot(1)}/><div style={st.dot(2)}/>
               </div>
             </div>
           )}
           <div ref={bottomRef}/>
         </div>
 
+        {/* Suggestions */}
         {messages.length <= 1 && (
-          <div style={st.suggestions}>
-            {SUGGESTIONS.map(suggestion => (
-              <button key={suggestion} className="suggestion-chip" style={st.chip} onClick={() => sendMessage(suggestion)}>{suggestion}</button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12, flexShrink: 0 }}>
+            {SUGGESTIONS.map(s => (
+              <button key={s} className="s-chip" style={st.chip} onClick={() => sendMessage(s)}>{s}</button>
             ))}
           </div>
         )}
 
-        <div style={st.inputRow}>
+        {/* Input */}
+        <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
           <textarea
             ref={inputRef} className="chat-input" style={st.input} rows={1}
-            placeholder="Ask anything — resources, topper copies, study plans, subject advice..."
+            placeholder="Ask for resources, topper copies, magazines, study plans..."
             value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKey}
           />
           <button style={{ ...st.sendBtn, opacity: loading || !input.trim() ? 0.5 : 1 }} onClick={() => sendMessage()} disabled={loading || !input.trim()}>→</button>
         </div>
         <div style={{ fontSize: 11, color: 'var(--text3)', textAlign: 'center', marginTop: 8 }}>
-          Press Enter to send · Chat history saved · Web search enabled for resources & links
+          Enter to send · Chat saved · Verified UPSC links database
         </div>
       </div>
     </>
