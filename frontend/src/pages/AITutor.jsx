@@ -1,96 +1,50 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '../api';
 
-const SYSTEM_PROMPT = (userData) => `You are an expert UPSC mentor and AI tutor. You give personalized, actionable guidance to serious IAS aspirants.
-
-Student Profile:
-- Name: ${userData.name || 'Aspirant'}
-- Subjects being studied: ${userData.subjects || 'Polity, History, Geography, Economics, Environment'}
-- This month's study hours: ${userData.monthlyHours || 'Not available'}
-- Daily study target: ${userData.dailyTarget || 'Not set'}
-- Current streak: ${userData.streak || 0} days
-- Subscription: Yearly Pro (serious aspirant)
-
-Your role:
-1. Give UPSC-specific advice — not generic study tips
-2. Compare the student's current pace with known topper strategies (Tina Dabi studied 15h/day, Srushti Deshmukh focused heavily on GS4 and essay)
-3. When the student mentions a subject, give a concrete 2-4 week plan
-4. Be encouraging but brutally honest about gaps
-5. Reference real UPSC resources: Laxmikant for Polity, NCERT for basics, The Hindu for current affairs, Vision IAS, Vajiram etc.
-6. Keep responses concise — 3-5 short paragraphs max
-7. Use bullet points for plans and schedules
-8. Always end with one actionable next step for TODAY
-
-Remember: This student is paying for yearly access — they are serious. Treat them like a coaching center mentor who knows their data.`;
-
 const WELCOME_MSG = (name) => `Hi ${name || 'there'}! 👋 I'm your personal UPSC AI Tutor.
 
-I can see your study data from the tracker. I'm here to help you with:
-- 📚 **Subject-wise study plans** (tell me your target date)
-- 🏆 **Topper strategy comparisons** (Tina Dabi, Srushti Deshmukh, etc.)
-- 📊 **Weekly performance reviews** based on your actual hours
-- 🎯 **Personalized advice** for your weak areas
+I have access to your real study data — your sessions, pending tasks, subject hours, and habit tracker. I'll give you advice based on YOUR actual progress, not generic tips.
+
+I can help you with:
+- 📊 **Today's performance review** based on your actual completed/pending sessions
+- 📚 **Subject-wise study plans** tailored to your weak areas
+- 🏆 **Topper strategy comparisons** with your current pace
+- 🎯 **Personalized recovery plans** for pending sessions
 
 What would you like to work on today?`;
 
 const SUGGESTIONS = [
+  "Review my study progress today",
+  "Which subject needs more attention?",
   "Give me a 30-day Polity plan",
-  "How do toppers study Current Affairs?",
-  "Review my subject hours and tell me gaps",
+  "How do I catch up on pending sessions?",
+  "Compare my pace with toppers",
   "Create a weekly timetable for me",
-  "How many hours should I study daily?",
-  "Which optional subject should I choose?",
 ];
 
 export default function AITutor() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [userData, setUserData] = useState({});
-  const [isYearly, setIsYearly] = useState(null);
+  const [userName, setUserName] = useState('');
   const [checkingAccess, setCheckingAccess] = useState(true);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
 
-  useEffect(() => { checkAccess(); }, []);
+  useEffect(() => { init(); }, []);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-  const checkAccess = async () => {
+  const init = async () => {
     try {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
-      const subRes = await api.get('/subscription/status');
-      const sub = subRes.data;
-      const hasAccess = true; // Open to all active users for now
-      setIsYearly(hasAccess);
-
-      setUserData({
-        name: user.name || 'Aspirant',
-        subjects: 'Polity, History, Geography, Economics, Environment, Science & Tech',
-        monthlyHours: '148 hours',
-        dailyTarget: '10 hours',
-        streak: 12,
-      });
-
-      try {
-        const overviewRes = await api.get(`/overview/daily?date=${new Date().toISOString().slice(0,10)}`);
-        if (overviewRes.data) {
-          setUserData(prev => ({
-            ...prev,
-            monthlyHours: overviewRes.data.total_hours + ' hours' || prev.monthlyHours,
-            streak: overviewRes.data.streak || prev.streak,
-          }));
-        }
-      } catch(e) { /* use defaults */ }
-
-      if (hasAccess) {
-        setMessages([{
-          role: 'assistant',
-          content: WELCOME_MSG(user.name),
-          id: Date.now(),
-        }]);
-      }
+      setUserName(user.name || 'Aspirant');
+      setMessages([{
+        role: 'assistant',
+        content: WELCOME_MSG(user.name),
+        id: Date.now(),
+      }]);
     } catch(e) {
-      setIsYearly(false);
+      console.error(e);
     } finally {
       setCheckingAccess(false);
     }
@@ -106,8 +60,8 @@ export default function AITutor() {
     setLoading(true);
 
     try {
+      // Backend now fetches user context itself — just send messages
       const response = await api.post('/ai/chat', {
-        systemPrompt: SYSTEM_PROMPT(userData),
         messages: newMessages
           .filter(m => m.role === 'user' || m.role === 'assistant')
           .map(m => ({ role: m.role, content: m.content }))
@@ -142,7 +96,6 @@ export default function AITutor() {
       .replace(/\n/g, '<br/>');
   };
 
-  // ── Styles (named 'st' to avoid conflicts with map variables) ─────────────
   const st = {
     page: { padding: '32px 40px', maxWidth: 900, margin: '0 auto', height: 'calc(100vh - 68px)', display: 'flex', flexDirection: 'column' },
     header: { marginBottom: 20, flexShrink: 0 },
@@ -170,33 +123,13 @@ export default function AITutor() {
     inputRow: { display: 'flex', gap: 10, flexShrink: 0 },
     input: { flex: 1, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 16px', fontSize: 14, color: 'var(--text)', fontFamily: 'Sora,sans-serif', outline: 'none', resize: 'none', lineHeight: 1.5 },
     sendBtn: { width: 48, height: 48, borderRadius: 12, background: 'var(--purple)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all .2s' },
-    locked: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 48, textAlign: 'center' },
     typing: { display: 'flex', gap: 4, padding: '12px 16px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '18px 18px 18px 4px', width: 'fit-content' },
     dot: (i) => ({ width: 8, height: 8, borderRadius: '50%', background: 'var(--purple)', opacity: .4, animation: `bounce 1.2s ${i * 0.2}s infinite` }),
   };
 
   if (checkingAccess) return (
     <div style={{ ...st.page, alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ color: 'var(--text2)', fontSize: 14 }}>Checking access...</div>
-    </div>
-  );
-
-  if (isYearly === false) return (
-    <div style={st.page}>
-      <div style={st.header}>
-        <div style={st.title}>🤖 AI Tutor <span style={st.badge}>YEARLY ONLY</span></div>
-        <div style={st.sub}>Your personal UPSC mentor powered by AI</div>
-      </div>
-      <div style={st.locked}>
-        <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
-        <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)', marginBottom: 10 }}>AI Tutor is a Yearly Plan feature</div>
-        <div style={{ fontSize: 14, color: 'var(--text2)', maxWidth: 400, lineHeight: 1.7, marginBottom: 28 }}>
-          Get personalized UPSC mentoring, topper strategy comparisons, and AI-generated study plans.
-        </div>
-        <a href="/subscription" style={{ background: 'linear-gradient(135deg,#7C6FFF,#2DD4BF)', color: '#fff', padding: '13px 32px', borderRadius: 11, fontSize: 14, fontWeight: 700, textDecoration: 'none', display: 'inline-block' }}>
-          Upgrade to Yearly — ₹1699 →
-        </a>
-      </div>
+      <div style={{ color: 'var(--text2)', fontSize: 14 }}>Loading AI Tutor...</div>
     </div>
   );
 
@@ -208,7 +141,7 @@ export default function AITutor() {
           30%{transform:translateY(-6px);opacity:1}
         }
         .suggestion-chip:hover { background: var(--purple-dim) !important; border-color: var(--purple) !important; color: var(--purple) !important; }
-        .send-btn:hover { background: #6A5EE8 !important; transform: scale(1.05); }
+        .send-btn:hover { opacity: 0.85; }
         .chat-input:focus { border-color: var(--purple) !important; }
       `}</style>
       <div style={st.page}>
@@ -217,10 +150,9 @@ export default function AITutor() {
             🤖 AI Tutor
             <span style={st.badge}>PRO</span>
           </div>
-          <div style={st.sub}>Your personal UPSC mentor · Powered by Gemini AI · Chat history saved this session</div>
+          <div style={st.sub}>Your personal UPSC mentor · Reads your real study data · Powered by LLaMA 3.3</div>
         </div>
 
-        {/* Chat window */}
         <div style={st.chatWrap}>
           {messages.map((msg) => (
             <div key={msg.id} style={st.msgRow(msg.role)}>
@@ -231,7 +163,7 @@ export default function AITutor() {
                   : msg.content}
               </div>
               {msg.role === 'user' && (
-                <div style={st.avatar('user')}>{(userData.name || 'U')[0].toUpperCase()}</div>
+                <div style={st.avatar('user')}>{(userName || 'U')[0].toUpperCase()}</div>
               )}
             </div>
           ))}
@@ -249,7 +181,6 @@ export default function AITutor() {
           <div ref={bottomRef}/>
         </div>
 
-        {/* Quick suggestions — only show at start */}
         {messages.length <= 1 && (
           <div style={st.suggestions}>
             {SUGGESTIONS.map(suggestion => (
@@ -263,14 +194,13 @@ export default function AITutor() {
           </div>
         )}
 
-        {/* Input */}
         <div style={st.inputRow}>
           <textarea
             ref={inputRef}
             className="chat-input"
             style={st.input}
             rows={1}
-            placeholder="Ask anything about UPSC — strategy, subjects, toppers, timetable..."
+            placeholder="Ask anything — I know your study data, subjects, pending sessions..."
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKey}
@@ -283,7 +213,7 @@ export default function AITutor() {
           >→</button>
         </div>
         <div style={{ fontSize: 11, color: 'var(--text3)', textAlign: 'center', marginTop: 8 }}>
-          Press Enter to send · Shift+Enter for new line · Powered by Gemini AI
+          Press Enter to send · Shift+Enter for new line · Your real tracker data is used for personalized advice
         </div>
       </div>
     </>
