@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '../api';
 
+const CHAT_STORAGE_KEY = 'upsc_ai_chat_history';
+
 const WELCOME_MSG = (name) => `Hi ${name || 'there'}! 👋 I'm your personal UPSC AI Tutor.
 
 I have access to your real study data — your sessions, pending tasks, subject hours, and habit tracker. I'll give you advice based on YOUR actual progress, not generic tips.
@@ -32,12 +34,35 @@ export default function AITutor() {
   const inputRef = useRef(null);
 
   useEffect(() => { init(); }, []);
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+
+  // Save messages to localStorage whenever they change
+  useEffect(() => {
+    if (messages.length > 0) {
+      localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages));
+    }
+  }, [messages]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   const init = async () => {
     try {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       setUserName(user.name || 'Aspirant');
+
+      // Load saved chat history
+      const saved = localStorage.getItem(CHAT_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.length > 0) {
+          setMessages(parsed);
+          setCheckingAccess(false);
+          return;
+        }
+      }
+
+      // No saved history — show welcome message
       setMessages([{
         role: 'assistant',
         content: WELCOME_MSG(user.name),
@@ -50,6 +75,17 @@ export default function AITutor() {
     }
   };
 
+  const clearChat = () => {
+    if (!confirm('Clear chat history? This cannot be undone.')) return;
+    localStorage.removeItem(CHAT_STORAGE_KEY);
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    setMessages([{
+      role: 'assistant',
+      content: WELCOME_MSG(user.name),
+      id: Date.now(),
+    }]);
+  };
+
   const sendMessage = async (text) => {
     const userMsg = text || input.trim();
     if (!userMsg || loading) return;
@@ -60,7 +96,6 @@ export default function AITutor() {
     setLoading(true);
 
     try {
-      // Backend now fetches user context itself — just send messages
       const response = await api.post('/ai/chat', {
         messages: newMessages
           .filter(m => m.role === 'user' || m.role === 'assistant')
@@ -143,16 +178,33 @@ export default function AITutor() {
         .suggestion-chip:hover { background: var(--purple-dim) !important; border-color: var(--purple) !important; color: var(--purple) !important; }
         .send-btn:hover { opacity: 0.85; }
         .chat-input:focus { border-color: var(--purple) !important; }
+        .clear-btn:hover { background: var(--red-dim) !important; color: var(--red) !important; border-color: var(--red) !important; }
       `}</style>
       <div style={st.page}>
-        <div style={st.header}>
-          <div style={st.title}>
-            🤖 AI Tutor
-            <span style={st.badge}>PRO</span>
+        {/* Header */}
+        <div style={{ ...st.header, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <div style={st.title}>
+              🤖 AI Tutor
+              <span style={st.badge}>PRO</span>
+            </div>
+            <div style={st.sub}>Your personal UPSC mentor · Reads your real study data · Powered by LLaMA 3.3</div>
           </div>
-          <div style={st.sub}>Your personal UPSC mentor · Reads your real study data · Powered by LLaMA 3.3</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+              {messages.length - 1 > 0 ? `${messages.length - 1} messages` : ''}
+            </div>
+            <button
+              className="clear-btn"
+              onClick={clearChat}
+              style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text3)', borderRadius: 8, padding: '6px 12px', fontSize: 12, cursor: 'pointer', transition: 'all .15s' }}
+            >
+              🗑 Clear chat
+            </button>
+          </div>
         </div>
 
+        {/* Chat window */}
         <div style={st.chatWrap}>
           {messages.map((msg) => (
             <div key={msg.id} style={st.msgRow(msg.role)}>
@@ -181,6 +233,7 @@ export default function AITutor() {
           <div ref={bottomRef}/>
         </div>
 
+        {/* Suggestions — only show when chat is fresh */}
         {messages.length <= 1 && (
           <div style={st.suggestions}>
             {SUGGESTIONS.map(suggestion => (
@@ -194,6 +247,7 @@ export default function AITutor() {
           </div>
         )}
 
+        {/* Input */}
         <div style={st.inputRow}>
           <textarea
             ref={inputRef}
@@ -213,7 +267,7 @@ export default function AITutor() {
           >→</button>
         </div>
         <div style={{ fontSize: 11, color: 'var(--text3)', textAlign: 'center', marginTop: 8 }}>
-          Press Enter to send · Shift+Enter for new line · Your real tracker data is used for personalized advice
+          Press Enter to send · Shift+Enter for new line · Chat history saved automatically
         </div>
       </div>
     </>
