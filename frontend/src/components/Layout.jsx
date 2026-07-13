@@ -10,6 +10,7 @@ const navItems = [
   { path: '/targets',      label: 'Targets & Settings',icon: '🎯' },
   { path: '/habits',       label: 'Habit Tracker',     icon: '🏃' },
   { path: '/ai-tutor', label: 'AI Tutor 🤖', icon: '🤖' },
+  { path: '/ai-interviewer', label: 'AI Interviewer 🎙️', icon: '🎙️' },
   { path: '/subscription', label: 'Subscription',      icon: '⭐' },
 ];
 

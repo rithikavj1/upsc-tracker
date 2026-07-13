@@ -10,6 +10,7 @@ import WeeklyTracker from './pages/WeeklyTracker';
 import SubscriptionPage from './pages/SubscriptionPage';
 import HabitTracker from './pages/HabitTracker';
 import AITutor from './pages/AITutor';
+import AIInterviewer from './pages/AIInterviewer';
 
 function PrivateRoute({ children }) {
   const token = localStorage.getItem('token');
@@ -43,6 +44,7 @@ export default function App() {
           <Route path="targets" element={<Targets />} />
           <Route path="habits" element={<HabitTracker />} />
           <Route path="ai-tutor" element={<AITutor />} />
+          <Route path="ai-interviewer" element={<AIInterviewer />} />
           <Route path="subscription" element={<SubscriptionPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
