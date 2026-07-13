@@ -52,11 +52,11 @@ export default function AIInterviewer() {
       focus: 'Introduction & Candidate Profile'
     },
     {
-      text: `Thank you. You have chosen ${optionalSubject} as your optional subject. How do you analyze the current global geopolitical shift towards a multipolar alignment affecting India's neighborhood-first foreign policy in South Asia?`,
+      text: `You have chosen ${optionalSubject} as your optional subject. How do you analyze the current global geopolitical shift towards a multipolar alignment affecting India's neighborhood-first foreign policy in South Asia?`,
       focus: 'Optional Subject + Foreign Relations'
     },
     {
-      text: 'Good. Under the federal framework of India, how do you evaluate the dispute-resolution effectiveness of the Inter-State River Water Disputes Act, and what structural changes would you suggest?',
+      text: 'Under the federal framework of India, how do you evaluate the dispute-resolution effectiveness of the Inter-State River Water Disputes Act, and what structural changes would you suggest?',
       focus: 'GS Paper II - Indian Constitution'
     },
     {
@@ -65,7 +65,22 @@ export default function AIInterviewer() {
     }
   ];
 
+  // Conversational acknowledgement feedback phrases between questions
+  const transitionFeedbacks = [
+    `Thank you for sharing your background, ${candidateName}. The board appreciates your motivation for joining the civil services. Let's move to your optional subject.`,
+    `A reasonable overview of geopolitical alignments in South Asia. Highlighting trade ties is critical. Now, let's test your understanding of Indian constitutional mechanisms.`,
+    `Practical suggestions on water dispute tribunals. Aligning local grievances with central mediation is indeed required. Finally, let's evaluate your ethical decision making under administrative pressure.`,
+    `A balanced approach to handling political interference in developmental projects. The panel has concluded the session. I am now compiling your analytics scorecard.`
+  ];
+
   const activeQuestion = questions[currentIdx] || questions[0];
+
+  // Fix: Camera stream binding to video element in DOM after transition
+  useEffect(() => {
+    if (cameraActive && stream && videoRef.current) {
+      videoRef.current.srcObject = stream;
+    }
+  }, [cameraActive, stream, step]);
 
   // Pre-load voices on mount to reduce latency
   useEffect(() => {
@@ -152,7 +167,7 @@ export default function AIInterviewer() {
                         voices.find(v => v.lang.startsWith('en'));
     if (IndianVoice) utterance.voice = IndianVoice;
     
-    utterance.rate = 1.0; // Slightly faster for less latency but natural pace
+    utterance.rate = 1.05; // Quick responsive flow
     
     utterance.onstart = () => {
       setIsAiSpeaking(true);
@@ -181,9 +196,6 @@ export default function AIInterviewer() {
       setStream(camStream);
       setCameraActive(true);
       setMicActive(true);
-      if (videoRef.current) {
-        videoRef.current.srcObject = camStream;
-      }
     } catch (err) {
       console.warn('Webcam permission blocked:', err);
       setCameraActive(false);
@@ -242,7 +254,7 @@ export default function AIInterviewer() {
     setIsListening(false);
   };
 
-  // Auto-submit response on silence detection
+  // Auto-submit response on silence detection and trigger feedback conversational transitions
   const autoSubmitResponse = (textToSubmit) => {
     stopListeningAndSubmit();
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
@@ -250,31 +262,35 @@ export default function AIInterviewer() {
     const finalAnswer = textToSubmit.trim();
     if (!finalAnswer) return;
 
-    // Append response
+    setUserTranscript('');
+
     setAnswers((prevAnswers) => {
       const nextAnswers = [...prevAnswers, finalAnswer];
-      
-      // Advance steps
       const activeIdx = currentIdxRef.current;
-      if (activeIdx < questions.length - 1) {
-        const nextIdx = activeIdx + 1;
-        setCurrentIdx(nextIdx);
-        setTimeout(() => {
+
+      // Speak transitional feedback first
+      const feedbackText = transitionFeedbacks[activeIdx];
+      setAiText(feedbackText);
+
+      speakQuestion(feedbackText, () => {
+        // Once transitional feedback speech ends, trigger next question or show scorecard
+        if (activeIdx < questions.length - 1) {
+          const nextIdx = activeIdx + 1;
+          setCurrentIdx(nextIdx);
           triggerAiQuestion(nextIdx);
-        }, 300); // natural delay before speaking next
-      } else {
-        // Finished last question
-        setEvaluating(true);
-        stopMedia();
-        setTimeout(() => {
-          setEvaluating(false);
-          setStep('result');
-        }, 2000);
-      }
+        } else {
+          // Finished last question, transition to evaluation results
+          setEvaluating(true);
+          stopMedia();
+          setTimeout(() => {
+            setEvaluating(false);
+            setStep('result');
+          }, 2000);
+        }
+      });
+
       return nextAnswers;
     });
-
-    setUserTranscript('');
   };
 
   const handleNextStep = () => {
@@ -312,7 +328,7 @@ export default function AIInterviewer() {
             <div style={{
               width: 60, height: 60, borderRadius: 20,
               background: 'var(--purple-dim)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              display: 'flex', alignItems: 'center', justifycontent: 'center',
               fontSize: 26, color: 'var(--purple)', border: '1px solid rgba(124,111,255,0.2)'
             }}>🎙️</div>
 
@@ -389,7 +405,7 @@ export default function AIInterviewer() {
               <div style={{
                 background: '#07080c', border: '1px solid var(--border)',
                 borderRadius: 14, overflow: 'hidden', aspectRatio: '1.5',
-                display: 'flex', flexDirection: 'column', justifycontent: 'flex-end',
+                display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
                 position: 'relative'
               }}>
                 {cameraActive ? (
@@ -507,7 +523,7 @@ export default function AIInterviewer() {
                 }}
               />
 
-              <div style={{ display: 'flex', justifycontent: 'space-between' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <button
                   onClick={() => {
                     if (isListening) stopListeningAndSubmit();
