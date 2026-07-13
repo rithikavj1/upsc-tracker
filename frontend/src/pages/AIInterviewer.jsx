@@ -29,18 +29,34 @@ export default function AIInterviewer() {
   const videoRef = useRef(null);
   const recognitionRef = useRef(null);
   const silenceTimerRef = useRef(null);
+  const currentIdxRef = useRef(0);
+  const answersRef = useRef([]);
+
+  // Sync references to avoid stale closure state in speech events
+  useEffect(() => {
+    currentIdxRef.current = currentIdx;
+  }, [currentIdx]);
+
+  useEffect(() => {
+    answersRef.current = answers;
+  }, [answers]);
 
   // Audio waveform mock bars (CSS animation helper)
   const soundWaveBars = Array.from({ length: 8 });
 
-  // Interview Questions Database
+  // Interview Questions Database (Starts with personalized greeting)
+  const candidateName = user.name || 'Candidate';
   const questions = [
     {
-      text: `Welcome ${user.name || 'Aspirant'}. You have chosen ${optionalSubject || 'PSIR'} as your optional subject. How does the current global geopolitical shift towards a multipolar alignment affect India's neighborhood-first foreign policy in South Asia?`,
+      text: `Hello ${candidateName}. Welcome to your UPSC mock interview board. Before we proceed to syllabus and optional-specific questions, please tell the board a little bit about yourself, your background, and your core motivation for joining the civil services.`,
+      focus: 'Introduction & Candidate Profile'
+    },
+    {
+      text: `Thank you. You have chosen ${optionalSubject} as your optional subject. How do you analyze the current global geopolitical shift towards a multipolar alignment affecting India's neighborhood-first foreign policy in South Asia?`,
       focus: 'Optional Subject + Foreign Relations'
     },
     {
-      text: 'Good. Now let\'s check your administrative planning skills. Under the federal framework of India, how do you analyze the effectiveness of Inter-State River Water Dispute resolution bodies, and what structural changes would you suggest?',
+      text: 'Good. Under the federal framework of India, how do you evaluate the dispute-resolution effectiveness of the Inter-State River Water Disputes Act, and what structural changes would you suggest?',
       focus: 'GS Paper II - Indian Constitution'
     },
     {
@@ -48,6 +64,19 @@ export default function AIInterviewer() {
       focus: 'GS Paper IV - Ethics & Integrity'
     }
   ];
+
+  const activeQuestion = questions[currentIdx] || questions[0];
+
+  // Pre-load voices on mount to reduce latency
+  useEffect(() => {
+    const loadVoices = () => {
+      window.speechSynthesis.getVoices();
+    };
+    loadVoices();
+    if (window.speechSynthesis.onvoiceschanged !== undefined) {
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+  }, []);
 
   // Initialize Speech Recognition
   useEffect(() => {
@@ -62,20 +91,32 @@ export default function AIInterviewer() {
       };
 
       rec.onresult = (event) => {
+        let interimTrans = '';
         let finalTrans = '';
+        
         for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const transcriptText = event.results[i][0].transcript;
           if (event.results[i].isFinal) {
-            finalTrans += event.results[i][0].transcript;
+            finalTrans += transcriptText;
+          } else {
+            interimTrans += transcriptText;
           }
         }
-        if (finalTrans) {
-          setUserTranscript((prev) => prev + ' ' + finalTrans);
-          
-          // Auto-silence timer: if they stop speaking for 3 seconds, submit automatically
-          if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-          silenceTimerRef.current = setTimeout(() => {
-            stopListeningAndSubmit(finalTrans);
-          }, 3500);
+        
+        const latestText = finalTrans || interimTrans;
+        if (latestText.trim()) {
+          setUserTranscript((prev) => {
+            const separator = prev.endsWith(' ') || !prev ? '' : ' ';
+            const updated = prev + separator + latestText;
+            
+            // Auto-advance latency reduction: if user stops speaking for 2.2 seconds, auto-submit!
+            if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+            silenceTimerRef.current = setTimeout(() => {
+              autoSubmitResponse(updated);
+            }, 2200);
+            
+            return updated;
+          });
         }
       };
 
@@ -98,19 +139,20 @@ export default function AIInterviewer() {
     };
   }, [optionalSubject]);
 
-  // Voice Speech synthesis (AI Speaks)
+  // Voice Speech synthesis (AI Speaks - Optimized with Indian Tone priority)
   const speakQuestion = (text, callback) => {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     
-    // Choose professional voice
+    // Prioritize natural Indian English voice tone
     const voices = window.speechSynthesis.getVoices();
-    const voice = voices.find(v => v.lang.startsWith('en') && v.name.includes('Google')) ||
-                  voices.find(v => v.lang.startsWith('en') && v.name.includes('Natural')) ||
-                  voices.find(v => v.lang.startsWith('en'));
-    if (voice) utterance.voice = voice;
+    const IndianVoice = voices.find(v => v.lang === 'en-IN') ||
+                        voices.find(v => v.lang.startsWith('en') && v.name.toLowerCase().includes('india')) ||
+                        voices.find(v => v.lang.startsWith('en') && v.name.toLowerCase().includes('google')) ||
+                        voices.find(v => v.lang.startsWith('en'));
+    if (IndianVoice) utterance.voice = IndianVoice;
     
-    utterance.rate = 0.95; // Steady administrative cadence
+    utterance.rate = 1.0; // Slightly faster for less latency but natural pace
     
     utterance.onstart = () => {
       setIsAiSpeaking(true);
@@ -168,7 +210,7 @@ export default function AIInterviewer() {
     // Trigger AI speech for Q1
     setTimeout(() => {
       triggerAiQuestion(0);
-    }, 1000);
+    }, 800);
   };
 
   const triggerAiQuestion = (idx) => {
@@ -193,39 +235,51 @@ export default function AIInterviewer() {
     }
   };
 
-  const stopListeningAndSubmit = (addedText = '') => {
+  const stopListeningAndSubmit = () => {
     if (recognitionRef.current) {
       recognitionRef.current.stop();
     }
     setIsListening(false);
   };
 
+  // Auto-submit response on silence detection
+  const autoSubmitResponse = (textToSubmit) => {
+    stopListeningAndSubmit();
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    
+    const finalAnswer = textToSubmit.trim();
+    if (!finalAnswer) return;
+
+    // Append response
+    setAnswers((prevAnswers) => {
+      const nextAnswers = [...prevAnswers, finalAnswer];
+      
+      // Advance steps
+      const activeIdx = currentIdxRef.current;
+      if (activeIdx < questions.length - 1) {
+        const nextIdx = activeIdx + 1;
+        setCurrentIdx(nextIdx);
+        setTimeout(() => {
+          triggerAiQuestion(nextIdx);
+        }, 300); // natural delay before speaking next
+      } else {
+        // Finished last question
+        setEvaluating(true);
+        stopMedia();
+        setTimeout(() => {
+          setEvaluating(false);
+          setStep('result');
+        }, 2000);
+      }
+      return nextAnswers;
+    });
+
+    setUserTranscript('');
+  };
+
   const handleNextStep = () => {
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-    }
-
-    const currentAnswer = userTranscript.trim();
-    if (!currentAnswer) return;
-
-    const nextAnswers = [...answers, currentAnswer];
-    setAnswers(nextAnswers);
-    setUserTranscript('');
-
-    if (currentIdx < questions.length - 1) {
-      const nextIdx = currentIdx + 1;
-      setCurrentIdx(nextIdx);
-      triggerAiQuestion(nextIdx);
-    } else {
-      // Mock grading analysis
-      setEvaluating(true);
-      stopMedia();
-      setTimeout(() => {
-        setEvaluating(false);
-        setStep('result');
-      }, 3000);
-    }
+    autoSubmitResponse(userTranscript);
   };
 
   return (
@@ -335,7 +389,7 @@ export default function AIInterviewer() {
               <div style={{
                 background: '#07080c', border: '1px solid var(--border)',
                 borderRadius: 14, overflow: 'hidden', aspectRatio: '1.5',
-                display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
+                display: 'flex', flexDirection: 'column', justifycontent: 'flex-end',
                 position: 'relative'
               }}>
                 {cameraActive ? (
@@ -349,7 +403,7 @@ export default function AIInterviewer() {
                 ) : (
                   <div style={{
                     position: 'absolute', inset: 0, display: 'flex',
-                    flexDirection: 'column', itemsCenter: 'center', justifyContent: 'center',
+                    flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                     gap: 12, textAlign: 'center', background: 'var(--surface2)'
                   }}>
                     <span style={{ fontSize: 24 }}>📷</span>
@@ -361,7 +415,7 @@ export default function AIInterviewer() {
                 <div style={{
                   padding: '8px 12px', background: 'rgba(9,9,11,0.75)',
                   backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'space-between',
-                  alignItems: 'center', position: 'relative', zIndex: 2
+                  alignItems: 'center', position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 2
                 }}>
                   <div style={{ fontSize: 10, fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span style={{ width: 6, height: 6, borderRadius: '50%', background: cameraActive ? 'var(--green)' : 'var(--text3)' }} />
@@ -397,7 +451,7 @@ export default function AIInterviewer() {
                   <span style={{
                     fontSize: 9, fontWeight: 700, padding: '2px 8px',
                     borderRadius: 12, background: 'var(--purple-dim)', color: 'var(--purple)'
-                  }}>Q {currentIdx + 1} of 3</span>
+                  }}>Q {currentIdx + 1} of 4</span>
                 </div>
 
                 {/* Speech transcript */}
@@ -435,11 +489,10 @@ export default function AIInterviewer() {
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <span style={{
-                  fontSize: 18, color: isListening ? 'var(--red)' : 'var(--text3)',
-                  animation: isListening ? 'pulse 1s infinite alternate' : 'none'
+                  fontSize: 18, color: isListening ? 'var(--red)' : 'var(--text3)'
                 }}>🎙️</span>
                 <span style={{ fontSize: 11, fontWeight: 600, color: isListening ? 'var(--text)' : 'var(--text3)' }}>
-                  {isListening ? 'Speech Recognition Active... Speak clearly' : 'Ready to record. Click "Speak Answer" to start.'}
+                  {isListening ? 'Speech Recognition Active... Speak now (Will auto-submit on 2.2s silence)' : 'Ready to record. Click "Speak Answer" to start.'}
                 </span>
               </div>
 
@@ -454,7 +507,7 @@ export default function AIInterviewer() {
                 }}
               />
 
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', justifycontent: 'space-between' }}>
                 <button
                   onClick={() => {
                     if (isListening) stopListeningAndSubmit();
