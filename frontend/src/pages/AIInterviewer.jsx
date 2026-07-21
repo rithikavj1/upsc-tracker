@@ -83,21 +83,21 @@ export default function AIInterviewer() {
       role: 'Board Chairperson',
       specialty: 'DAF Background, State Profile & Personality',
       avatar: '👨‍💼',
-      voiceConfig: { lang: 'en-IN', pitch: 1.0, rate: 0.92 } // Calm & hosting
+      voiceConfig: { lang: 'en-IN', pitch: 1.0, rate: 0.95 } // Calm & hosting
     },
     swamy: {
       name: 'Prof. Aruna Swamy',
       role: 'Syllabus & Optional Expert',
       specialty: 'Optional Subject depth, Policy & GS papers',
       avatar: '👩‍🏫',
-      voiceConfig: { lang: 'en-IN', pitch: 1.15, rate: 1.05 } // Fast & analytical
+      voiceConfig: { lang: 'en-IN', pitch: 1.06, rate: 1.02 } // Fast & analytical
     },
     raghavan: {
       name: 'Shri Vijay Raghavan',
       role: 'Ethics & Crisis Commissioner',
       avatar: '👨‍⚖️',
       specialty: 'Aptitude, Ethics case studies, Crisis reaction (SRT)',
-      voiceConfig: { lang: 'en-IN', pitch: 0.78, rate: 0.86 } // Grave & low pitch
+      voiceConfig: { lang: 'en-IN', pitch: 0.88, rate: 0.90 } // Grave & low pitch
     }
   };
 
@@ -243,7 +243,7 @@ export default function AIInterviewer() {
 
       rec.onstart = () => {
         setIsListening(true);
-        startSilenceProgress(5000); // 5 seconds default threshold
+        startSilenceProgress(8000); // 8 seconds default threshold
       };
 
       rec.onresult = (event) => {
@@ -256,12 +256,12 @@ export default function AIInterviewer() {
         setUserTranscript(fullTranscript);
         
         // Reset the silence countdown bar on active speech detection!
-        startSilenceProgress(5000);
+        startSilenceProgress(8000);
 
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
         silenceTimerRef.current = setTimeout(() => {
           autoSubmitResponse(fullTranscript);
-        }, 5000); // 5.0 seconds of silence gives ample time to think and breathe
+        }, 8000); // 8.0 seconds of silence gives ample time to think and breathe
       };
 
       rec.onend = () => {
@@ -410,6 +410,7 @@ The candidate (${candidateName}, Optional: ${optionalSubject}, State: ${stateNam
 Candidate's spoken response was: "${finalAnswer}".
 
 Formulate a highly challenging and contextual follow-up question based DIRECTLY on the themes/words in their response. Do not use generic boilerplate.
+Keep your output extremely concise. Your TRANSITION must be exactly 1 sentence (under 15 words) and your QUESTION must be exactly 1 sentence (under 20 words). This is crucial for minimal conversational voice latency.
 Format your output exactly as:
 TRANSITION: [Your 1-sentence analytical transition critique or acknowledgement]
 QUESTION: [Your dynamic follow-up question derived from their answer text]
@@ -843,7 +844,7 @@ FOCUS: [Focus area label]`;
                 </div>
                 {isListening && (
                   <span style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 500 }}>
-                    Auto-submitting after 5s of silence
+                    Auto-submitting after 8s of silence
                   </span>
                 )}
               </div>
