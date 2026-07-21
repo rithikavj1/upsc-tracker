@@ -385,6 +385,8 @@ export default function AIInterviewer() {
     }
   ];
 
+  const soundWaveBars = Array.from({ length: 8 });
+
   return (
     <div style={{ padding: '30px 40px', maxWidth: 1100, margin: '0 auto' }}>
       
