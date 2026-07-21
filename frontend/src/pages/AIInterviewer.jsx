@@ -97,41 +97,106 @@ export default function AIInterviewer() {
     }
   };
 
-  // Categories of UPSC board questions mapped to active members
+  // 15 Categories of UPSC board questions mapped to active members
   const questions = [
+    // Dr. Mathur - Chairperson (Personality/DAF)
     {
       memberId: 'mathur',
-      focus: 'Personality & DAF background',
-      text: `Hello ${candidateName}. Let us begin this mock board. Before we proceed to specialized syllabus matters, please tell the panel about yourself, your state of ${stateName}, your degree in ${academicDegree}, and your motivation for choosing civil services.`
+      focus: 'Profile & Background',
+      text: `Hello ${candidateName}. Welcome to your UPSC mock interview board. Let us begin. Please tell the panel about yourself, your academic degree in ${academicDegree}, and your motivation for joining civil services.`
+    },
+    {
+      memberId: 'mathur',
+      focus: 'Home State Profile',
+      text: `I see that you come from the state of ${stateName}. What do you believe are the top three administrative bottlenecks holding back economic growth in your home state, and how would you resolve them?`
+    },
+    {
+      memberId: 'mathur',
+      focus: 'Hobbies & Interests',
+      text: `You have listed ${hobbies} as your hobbies. How can we leverage classical folk arts and sports like Carnatic music or cycling to improve tourism and health indicators at the grass-roots level?`
+    },
+    {
+      memberId: 'mathur',
+      focus: 'Work Experience',
+      text: `Looking at your experience as ${experience}, how do you plan to use this professional skillset to modernize internal governance systems inside your district?`
+    },
+    {
+      memberId: 'mathur',
+      focus: 'Values & Resilience',
+      text: `Civil service preparation requires massive mental resilience. Describe a failure in your academic or professional life and how you managed to recover from it using public service values.`
+    },
+
+    // Prof. Swamy - Optional & GS Syllabus
+    {
+      memberId: 'swamy',
+      focus: 'Optional Subject Analysis',
+      text: `Let us address your optional subject of ${optionalSubject}. Under global climate changes like El Niño Southern Oscillation, how do you analyze its direct impact on drylands agriculture and water supply in southern India?`
     },
     {
       memberId: 'swamy',
-      focus: 'Optional & Syllabus Concept',
-      text: `Let us address your optional subject of ${optionalSubject}. Under global climate anomalies like El Niño, how do you analyze its impact on irrigation patterns, agricultural outputs, and local rural distress in regions like yours?`
-    },
-    {
-      memberId: 'raghavan',
-      focus: 'Critical Thinking & Aptitude',
-      text: `I have a logical aptitude question. If a welfare policy requires local direct benefit transfers, and in your sub-division, twenty percent of eligible senior citizens cannot access iris-scans due to age, resulting in pension denial, how will you audit this logically without compromising fiscal security?`
-    },
-    {
-      memberId: 'raghavan',
-      focus: 'Situation Reaction (SRT - Ethics)',
-      text: `Imagine you are appointed as the District Commissioner. A major developmental highway is approved, but local groups organize massive blocking protests. Concurrently, a local political figure calls demanding you sanction immediate force to clear the site. How do you resolve this using constitutional ethics?`
+      focus: 'GS-2 - Indian Federalism',
+      text: `In recent years, the debate over cooperative versus confrontational federalism has escalated. How do you evaluate the dispute-resolution effectiveness of the Inter-State Council and GST Council?`
     },
     {
       memberId: 'swamy',
-      focus: 'Critical National Policy',
-      text: `Finally, with your background in ${academicDegree}, how do you evaluate the national policy guidelines on semiconductor manufacturing corridors? Do you believe India's subsidy model is structured logically to compete globally?`
+      focus: 'GS-2 - Local Governance',
+      text: `The 73rd and 74th Amendments aimed to devolve power. However, local bodies are criticized for lacking funds, functions, and functionaries. What structural amendments do you propose to empower local panchayats?`
+    },
+    {
+      memberId: 'swamy',
+      focus: 'GS-3 - Sustainable Agriculture',
+      text: `India's groundwater depletion is alarming, particularly in agricultural states. How can we transition farmers away from water-intensive crops like paddy while securing food security?`
+    },
+    {
+      memberId: 'swamy',
+      focus: 'GS-3 - Technology in Governance',
+      text: `How can artificial intelligence and machine learning be leveraged to audit developmental expenditures in welfare schemes, ensuring transparency without compromising citizen privacy?`
+    },
+
+    // Shri Raghavan - Ethics, Logic, SRT
+    {
+      memberId: 'raghavan',
+      focus: 'Critical Logical Aptitude',
+      text: `I have a logical aptitude question. If a social policy requires local biometric validation, and twenty percent of senior citizens fail fingerprint scans due to manual wear, resulting in pension denial, how will you audit this bypass logically?`
+    },
+    {
+      memberId: 'raghavan',
+      focus: 'Crisis Situation Reaction (SRT)',
+      text: `Imagine you are appointed as the District Magistrate. A major highway project is approved, but local displacement leads to violent protests. A politician calls demanding you deploy immediate force to clear the site. What is your ethical course of action?`
+    },
+    {
+      memberId: 'raghavan',
+      focus: 'GS-4 - Administrative Integrity',
+      text: `Imagine you discover a senior colleague in your department is leaking draft policy reports to private consultancies. You have no formal proof. How do you handle this dilemma without breaching administrative decorum?`
+    },
+    {
+      memberId: 'raghavan',
+      focus: 'Critical Analytical Thinking',
+      text: `We face a direct trade-off between green conservation (protecting forest land) and developmental infrastructure (building hydel power projects in tribal areas). As a public administrator, how will you evaluate this balance?`
+    },
+    {
+      memberId: 'swamy',
+      focus: 'GS-3 - Semiconductor Policy',
+      text: `Finally, with your background in ${academicDegree}, do you believe India's financial subsidy model under the ISM semiconductor program is structured logically to build local fab capacity or is it too dependent on foreign technology transfers?`
     }
   ];
 
-  // Board transitional feedback spoke after user answers
+  // 15 Conversational transition feedback responses
   const transitionFeedbacks = [
-    `Thank you for sharing your background, ${candidateName}. Dr. Mathur is done. Let me hand over to Prof. Aruna Swamy for optional subject analysis.`,
-    `A solid overview of optional themes. Prof. Swamy is satisfied. Shri Vijay Raghavan will now ask you an analytical aptitude and ethics question.`,
-    `Logic audit captured. Now, Shri Vijay Raghavan will present a critical Situation Reaction Test.`,
-    `A very practical solution to ethical friction. Let us hand back to Prof. Aruna Swamy for the final policy query.`,
+    `Thank you for sharing your background, ${candidateName}. Dr. Mathur is done. Let us discuss your home state.`,
+    `Bottlenecks noted. Let us move to your hobbies of ${hobbies}.`,
+    `A practical combination of health and culture. Let us review your work experience.`,
+    `Modernizing administration is indeed a key priority. Let us check your values under failure.`,
+    `Resilience is key in administrative services. Dr. Mathur is done. Let me hand over to Prof. Aruna Swamy for optional subject analysis.`,
+    `A solid overview of optional themes. Prof. Swamy is satisfied. Let us discuss cooperative federalism.`,
+    `GST council dynamics analyzed. Let us look at local governance devolution.`,
+    `Empowering local panchayats is vital. Let us examine groundwater depletion.`,
+    `Groundwater crop substitution models noted. Let us check technology in welfare auditing.`,
+    `Technology integration parameters captured. Prof. Swamy is satisfied. Shri Vijay Raghavan will now ask you logical aptitude and ethics questions.`,
+    `Logical audit bypass captured. Now, Shri Vijay Raghavan will present a critical Situation Reaction Test.`,
+    `A dialogical crisis resolution method. Let us review administrative integrity case study.`,
+    `Decorum and checking leaks are both required. Let us move to environmental displacement.`,
+    `Environmental trade-offs analyzed. Let us address the final policy question on semiconductor Fab corridors.`,
     `Thank you, candidate. The board panel is satisfied with your critical reasoning. The chairperson is now closing the interview session.`
   ];
 
@@ -151,33 +216,19 @@ export default function AIInterviewer() {
       };
 
       rec.onresult = (event) => {
-        let interimTrans = '';
-        let finalTrans = '';
-        
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          const text = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
-            finalTrans += text;
-          } else {
-            interimTrans += text;
-          }
+        // Fix double transcription: query cumulative results directly
+        let fullTranscript = '';
+        for (let i = 0; i < event.results.length; ++i) {
+          fullTranscript += event.results[i][0].transcript;
         }
         
-        const latestText = finalTrans || interimTrans;
-        if (latestText.trim()) {
-          setUserTranscript((prev) => {
-            const separator = prev.endsWith(' ') || !prev ? '' : ' ';
-            const updated = prev + separator + latestText;
-            
-            // Silence trigger: proceed automatically on 2.2 seconds of silence
-            if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-            silenceTimerRef.current = setTimeout(() => {
-              autoSubmitResponse(updated);
-            }, 2200);
-            
-            return updated;
-          });
-        }
+        setUserTranscript(fullTranscript);
+        
+        // Silence detection: proceed automatically on 2.2s of silence
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = setTimeout(() => {
+          autoSubmitResponse(fullTranscript);
+        }, 2200);
       };
 
       rec.onend = () => {
@@ -199,7 +250,7 @@ export default function AIInterviewer() {
     };
   }, [optionalSubject, step]);
 
-  // Voice synthesis with profile voice configurations
+  // Voice synthesis modulated with member voices
   const speakWithMemberVoice = (text, memberId, callback) => {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
@@ -212,7 +263,6 @@ export default function AIInterviewer() {
                   voices.find(v => v.lang.startsWith('en'));
     if (voice) utterance.voice = voice;
     
-    // Set custom modulated speeds and pitches!
     utterance.pitch = member.voiceConfig.pitch;
     utterance.rate = member.voiceConfig.rate;
 
@@ -314,8 +364,11 @@ export default function AIInterviewer() {
       const feedbackText = transitionFeedbacks[activeIdx];
       setAiText(feedbackText);
 
-      // Chairperson Mathur does transitions, except Raghavan handles water/SRT
-      const transitionSpeakerId = activeIdx === 2 || activeIdx === 3 ? 'raghavan' : 'mathur';
+      // Chairperson Mathur does transitions, except Raghavan handles water/SRT/logic
+      let transitionSpeakerId = 'mathur';
+      if (activeIdx >= 10 && activeIdx <= 13) {
+        transitionSpeakerId = 'raghavan';
+      }
 
       speakWithMemberVoice(feedbackText, transitionSpeakerId, () => {
         if (activeIdx < questions.length - 1) {
@@ -362,7 +415,7 @@ export default function AIInterviewer() {
       ]
     },
     {
-      q: `Q2: Geography Optional Inquiry`,
+      q: `Q6: Geography Optional Inquiry`,
       ans: `In geography, El Niño triggers high sea-surface temperatures in the Pacific, weakening the monsoonal winds. This causes dry spells over central and southern India, meaning crop failure. We need to implement localized water conservation like farm ponds to mitigate this.`,
       highlights: [
         { startIdx: 35, endIdx: 82, type: 'good', text: 'high sea-surface temperatures in the Pacific, weakening the monsoonal winds', feedback: 'Prof. Swamy: "Strong conceptual accuracy. Candidate correctly maps El Niño physical anomalies to Indian monsoonal wind patterns."' },
@@ -370,14 +423,14 @@ export default function AIInterviewer() {
       ]
     },
     {
-      q: `Q3: logical Aptitude Pension Case`,
+      q: `Q11: logical Aptitude Pension Case`,
       ans: `To audit this logically, I will propose a dual authentication bypass. If iris scans fail, we will verify using local Aadhar OTP or physical verified registry certified by local block development officers to prevent denial of service.`,
       highlights: [
         { startIdx: 85, endIdx: 185, type: 'good', text: 'local Aadhar OTP or physical verified registry certified by local block development officers', feedback: 'Shri Raghavan: "Excellent administrative logic. Balances security checks with localized social audits to prevent service denial."' }
       ]
     },
     {
-      q: `Q4: Situation Reaction Test (SRT)`,
+      q: `Q12: Situation Reaction Test (SRT)`,
       ans: `If a politician pressures me to use force on protesters, I will politely decline. I will establish a direct dialogue channel with protest leaders to verify their grievances. Force will only be deployed as a last resort under IPC if public property is physically threatened.`,
       highlights: [
         { startIdx: 50, endIdx: 125, type: 'good', text: 'establish a direct dialogue channel with protest leaders to verify their grievances', feedback: 'Shri Raghavan: "High crisis leadership score. Prioritizes constitutional dialogue over coercive pressure, adhering to standard civil services ethics."' }
@@ -531,7 +584,7 @@ export default function AIInterviewer() {
             <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>Active UPSC Mock Board Members</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {Object.values(boardMembers).map((m) => (
-                <div key={m.name} style={{
+                <div style={{
                   display: 'flex', gap: 14, background: 'var(--surface2)',
                   border: '1px solid var(--border)', borderRadius: 12, padding: '12px'
                 }}>
@@ -647,7 +700,7 @@ export default function AIInterviewer() {
                 <span style={{
                   fontSize: 9, fontWeight: 700, padding: '2px 8px',
                   borderRadius: 12, background: 'var(--purple-dim)', color: 'var(--purple)'
-                }}>Question {currentIdx + 1} of 5</span>
+                }}>Question {currentIdx + 1} of 15</span>
               </div>
 
               {/* Text display */}
@@ -746,7 +799,7 @@ export default function AIInterviewer() {
             alignItems: 'center'
           }}>
             <div>
-              <span style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>Mercor Evaluation Placement Verdict</span>
+              <span style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>Mercor Evaluation Verdict</span>
               <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', marginTop: 4 }}>
                 Highly Recommended <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--green)', background: 'var(--green-dim)', padding: '3px 8px', borderRadius: 4, marginLeft: 10 }}>Verdict: Pass (268/300)</span>
               </h2>
