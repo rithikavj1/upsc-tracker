@@ -2,8 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
 
-const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
-
 export default function AIInterviewer() {
   const navigate = useNavigate();
   const user = JSON.parse(localStorage.getItem('user') || '{}');
@@ -43,13 +41,21 @@ export default function AIInterviewer() {
 
   // References
   const videoRef = useRef(null);
-  const recognitionRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
   const silenceTimerRef = useRef(null);
-  const progressIntervalRef = useRef(null);
+  const silenceCheckIntervalRef = useRef(null);
+  
+  // VAD silence trackers
+  const isListeningRef = useRef(false);
   const currentIdxRef = useRef(0);
   const answersRef = useRef([]);
 
   // Sync references to avoid stale closure state
+  useEffect(() => {
+    isListeningRef.current = isListening;
+  }, [isListening]);
+
   useEffect(() => {
     currentIdxRef.current = currentIdx;
   }, [currentIdx]);
@@ -209,84 +215,7 @@ export default function AIInterviewer() {
   const activeQuestion = questions[currentIdx] || questions[0];
   const activeMember = boardMembers[activeQuestion.memberId];
 
-  // Progress bar updater for silence detection
-  const startSilenceProgress = (totalDurationMs) => {
-    if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
-    
-    setSilenceProgress(100);
-    const intervalMs = 100;
-    const decrement = (intervalMs / totalDurationMs) * 100;
-
-    progressIntervalRef.current = setInterval(() => {
-      setSilenceProgress((prev) => {
-        if (prev <= 0) {
-          clearInterval(progressIntervalRef.current);
-          return 0;
-        }
-        return prev - decrement;
-      });
-    }, intervalMs);
-  };
-
-  const stopSilenceProgress = () => {
-    if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
-    setSilenceProgress(100);
-  };
-
-  // Initialize Speech Recognition
-  useEffect(() => {
-    if (SpeechRecognitionClass) {
-      const rec = new SpeechRecognitionClass();
-      rec.continuous = true;
-      rec.interimResults = true;
-      rec.lang = 'en-IN';
-
-      rec.onstart = () => {
-        setIsListening(true);
-        startSilenceProgress(5000); // 5 seconds default threshold
-      };
-
-      rec.onresult = (event) => {
-        // Fix double transcription: query cumulative results directly
-        let fullTranscript = '';
-        for (let i = 0; i < event.results.length; ++i) {
-          fullTranscript += event.results[i][0].transcript;
-        }
-        
-        setUserTranscript(fullTranscript);
-        
-        // Reset the silence countdown bar on active speech detection!
-        startSilenceProgress(5000);
-
-        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-        silenceTimerRef.current = setTimeout(() => {
-          autoSubmitResponse(fullTranscript);
-        }, 5000); // 5.0 seconds of silence gives ample time to think and breathe
-      };
-
-      rec.onend = () => {
-        setIsListening(false);
-        stopSilenceProgress();
-      };
-
-      rec.onerror = (e) => {
-        console.warn('Recognition error:', e.error);
-        setIsListening(false);
-        stopSilenceProgress();
-      };
-
-      recognitionRef.current = rec;
-    }
-
-    return () => {
-      stopMedia();
-      window.speechSynthesis.cancel();
-      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-      if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
-    };
-  }, [optionalSubject, step]);
-
-  // Voice synthesis modulated with member voices
+  // Voice Speech synthesis (AI Speaks - Optimized with Indian Tone priority)
   const speakWithMemberVoice = (text, memberId, callback) => {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
@@ -366,26 +295,117 @@ export default function AIInterviewer() {
     });
   };
 
+  // Start Mic Listening and Voice Activity Detection (VAD)
   const startMicListening = () => {
-    if (recognitionRef.current) {
-      setUserTranscript('');
-      try {
-        recognitionRef.current.start();
-      } catch (err) {}
+    if (!stream) return;
+    
+    setUserTranscript('');
+    audioChunksRef.current = [];
+    
+    try {
+      // 1. Initialize HTML5 MediaRecorder to record high-fidelity voice
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+      
+      recorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        await transcribeAudioWithWhisper(audioBlob);
+      };
+
+      mediaRecorderRef.current = recorder;
+      recorder.start(250);
+      setIsListening(true);
+
+      // 2. Initialize AudioContext for volume-based silence threshold monitoring (VAD)
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      const audioCtx = new AudioContextClass();
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+      let silenceStart = Date.now();
+      const maxSilenceMs = 5000; // 5.0 seconds of silence allowed
+
+      const checkVolume = () => {
+        if (!isListeningRef.current) {
+          audioCtx.close();
+          return;
+        }
+
+        analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < bufferLength; i++) {
+          sum += dataArray[i];
+        }
+        const avg = sum / bufferLength;
+
+        // If avg volume > 7, voice activity is detected! Reset silence timer.
+        if (avg > 7) {
+          silenceStart = Date.now();
+        }
+
+        const idleTime = Date.now() - silenceStart;
+        const progressPct = Math.max(0, 100 - (idleTime / maxSilenceMs) * 100);
+        setSilenceProgress(progressPct);
+
+        if (idleTime >= maxSilenceMs) {
+          stopListeningAndSubmit();
+        } else {
+          requestAnimationFrame(checkVolume);
+        }
+      };
+
+      requestAnimationFrame(checkVolume);
+
+    } catch (err) {
+      console.error('Failed to initialize voice capture:', err);
     }
   };
 
   const stopListeningAndSubmit = () => {
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
     }
     setIsListening(false);
-    stopSilenceProgress();
+    setSilenceProgress(100);
+  };
+
+  // Securely upload raw binary audio stream to Groq Whisper route handler
+  const transcribeAudioWithWhisper = async (audioBlob) => {
+    setEvaluating(true);
+    setAiText('Transcribing your answer with Groq Whisper...');
+    
+    try {
+      const response = await api.post('/ai/transcribe', audioBlob, {
+        headers: { 'Content-Type': 'audio/webm' }
+      });
+      
+      const transcribedText = response.data?.text || '';
+      if (transcribedText.trim()) {
+        setUserTranscript(transcribedText);
+        // Process the transcribed text to generate follow-up question
+        await autoSubmitResponse(transcribedText);
+      } else {
+        setAiText('I did not catch that. Please speak again.');
+        setEvaluating(false);
+        setTimeout(() => {
+          startMicListening();
+        }, 1500);
+      }
+    } catch (err) {
+      console.error('Whisper transcription failed, using fallback:', err);
+      setAiText('⚠️ Transcription failed. Please type your response or retry.');
+      setEvaluating(false);
+    }
   };
 
   // Process response and trigger transition voice feedbacks
   const autoSubmitResponse = async (textToSubmit) => {
-    stopListeningAndSubmit();
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     
     const finalAnswer = textToSubmit.trim();
@@ -485,7 +505,7 @@ FOCUS: [Focus area label]`;
   };
 
   const handleNextStep = () => {
-    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    stopListeningAndSubmit();
     autoSubmitResponse(userTranscript);
   };
 
