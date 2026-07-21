@@ -7,16 +7,24 @@ const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRe
 export default function AIInterviewer() {
   const navigate = useNavigate();
   const user = JSON.parse(localStorage.getItem('user') || '{}');
+
+  // Page Steps: 'setup' | 'interview' | 'result'
+  const [step, setStep] = useState('setup');
   
-  // Game states
-  const [step, setStep] = useState('setup'); // 'setup' | 'interview' | 'result'
-  const [targetYear, setTargetYear] = useState('All Years');
-  const [optionalSubject, setOptionalSubject] = useState('Political Science (PSIR)');
+  // DAF Setup states
+  const [candidateName, setCandidateName] = useState(user.name || 'Rithika V');
+  const [stateName, setStateName] = useState('Telangana');
+  const [optionalSubject, setOptionalSubject] = useState('Geography');
+  const [academicDegree, setAcademicDegree] = useState('B.Tech in Computer Science');
+  const [hobbies, setHobbies] = useState('Carnatic Music, Cycling');
+  const [experience, setExperience] = useState('Software Analyst, Civil Services aspirant');
+
+  // Media states
   const [cameraActive, setCameraActive] = useState(false);
   const [micActive, setMicActive] = useState(false);
   const [stream, setStream] = useState(null);
 
-  // Interview state
+  // Active Interview states
   const [currentIdx, setCurrentIdx] = useState(0);
   const [aiText, setAiText] = useState('');
   const [userTranscript, setUserTranscript] = useState('');
@@ -24,6 +32,11 @@ export default function AIInterviewer() {
   const [isListening, setIsListening] = useState(false);
   const [answers, setAnswers] = useState([]);
   const [evaluating, setEvaluating] = useState(false);
+  const [activeBoardMemberId, setActiveBoardMemberId] = useState('mathur');
+
+  // Scorecard tabs: 'summary' | 'transcript' | 'skills' | 'plan'
+  const [resultTab, setResultTab] = useState('summary');
+  const [activeCritiqueId, setActiveCritiqueId] = useState(null);
 
   // References
   const videoRef = useRef(null);
@@ -32,7 +45,7 @@ export default function AIInterviewer() {
   const currentIdxRef = useRef(0);
   const answersRef = useRef([]);
 
-  // Sync references to avoid stale closure state in speech events
+  // Sync references to avoid stale closure state
   useEffect(() => {
     currentIdxRef.current = currentIdx;
   }, [currentIdx]);
@@ -41,48 +54,14 @@ export default function AIInterviewer() {
     answersRef.current = answers;
   }, [answers]);
 
-  // Audio waveform mock bars (CSS animation helper)
-  const soundWaveBars = Array.from({ length: 8 });
-
-  // Interview Questions Database (Starts with personalized greeting)
-  const candidateName = user.name || 'Candidate';
-  const questions = [
-    {
-      text: `Hello ${candidateName}. Welcome to your UPSC mock interview board. Before we proceed to syllabus and optional-specific questions, please tell the board a little bit about yourself, your background, and your core motivation for joining the civil services.`,
-      focus: 'Introduction & Candidate Profile'
-    },
-    {
-      text: `You have chosen ${optionalSubject} as your optional subject. How do you analyze the current global geopolitical shift towards a multipolar alignment affecting India's neighborhood-first foreign policy in South Asia?`,
-      focus: 'Optional Subject + Foreign Relations'
-    },
-    {
-      text: 'Under the federal framework of India, how do you evaluate the dispute-resolution effectiveness of the Inter-State River Water Disputes Act, and what structural changes would you suggest?',
-      focus: 'GS Paper II - Indian Constitution'
-    },
-    {
-      text: 'Finally, let\'s look at public service values. Imagine you are a District Magistrate and face severe political pressure to sanction funds for an unapproved welfare project right before local polls. How will you resolve this dilemma using constitutional ethics?',
-      focus: 'GS Paper IV - Ethics & Integrity'
-    }
-  ];
-
-  // Conversational acknowledgement feedback phrases between questions
-  const transitionFeedbacks = [
-    `Thank you for sharing your background, ${candidateName}. The board appreciates your motivation for joining the civil services. Let's move to your optional subject.`,
-    `A reasonable overview of geopolitical alignments in South Asia. Highlighting trade ties is critical. Now, let's test your understanding of Indian constitutional mechanisms.`,
-    `Practical suggestions on water dispute tribunals. Aligning local grievances with central mediation is indeed required. Finally, let's evaluate your ethical decision making under administrative pressure.`,
-    `A balanced approach to handling political interference in developmental projects. The panel has concluded the session. I am now compiling your analytics scorecard.`
-  ];
-
-  const activeQuestion = questions[currentIdx] || questions[0];
-
-  // Fix: Camera stream binding to video element in DOM after transition
+  // Audio Canvas visualizer sync
   useEffect(() => {
     if (cameraActive && stream && videoRef.current) {
       videoRef.current.srcObject = stream;
     }
   }, [cameraActive, stream, step]);
 
-  // Pre-load voices on mount to reduce latency
+  // Pre-load WebSpeech voices
   useEffect(() => {
     const loadVoices = () => {
       window.speechSynthesis.getVoices();
@@ -93,13 +72,79 @@ export default function AIInterviewer() {
     }
   }, []);
 
+  // Multi-Member Board Profiles
+  const boardMembers = {
+    mathur: {
+      name: 'Dr. B. K. Mathur',
+      role: 'Board Chairperson',
+      specialty: 'DAF Background, State Profile & Personality',
+      avatar: '👨‍💼',
+      voiceConfig: { lang: 'en-IN', pitch: 1.0, rate: 0.92 } // Calm & hosting
+    },
+    swamy: {
+      name: 'Prof. Aruna Swamy',
+      role: 'Syllabus & Optional Expert',
+      specialty: 'Optional Subject depth, Policy & GS papers',
+      avatar: '👩‍🏫',
+      voiceConfig: { lang: 'en-IN', pitch: 1.15, rate: 1.05 } // Fast & analytical
+    },
+    raghavan: {
+      name: 'Shri Vijay Raghavan',
+      role: 'Ethics & Crisis Commissioner',
+      avatar: '👨‍⚖️',
+      specialty: 'Aptitude, Ethics case studies, Crisis reaction (SRT)',
+      voiceConfig: { lang: 'en-IN', pitch: 0.78, rate: 0.86 } // Grave & low pitch
+    }
+  };
+
+  // Categories of UPSC board questions mapped to active members
+  const questions = [
+    {
+      memberId: 'mathur',
+      focus: 'Personality & DAF background',
+      text: `Hello ${candidateName}. Let us begin this mock board. Before we proceed to specialized syllabus matters, please tell the panel about yourself, your state of ${stateName}, your degree in ${academicDegree}, and your motivation for choosing civil services.`
+    },
+    {
+      memberId: 'swamy',
+      focus: 'Optional & Syllabus Concept',
+      text: `Let us address your optional subject of ${optionalSubject}. Under global climate anomalies like El Niño, how do you analyze its impact on irrigation patterns, agricultural outputs, and local rural distress in regions like yours?`
+    },
+    {
+      memberId: 'raghavan',
+      focus: 'Critical Thinking & Aptitude',
+      text: `I have a logical aptitude question. If a welfare policy requires local direct benefit transfers, and in your sub-division, twenty percent of eligible senior citizens cannot access iris-scans due to age, resulting in pension denial, how will you audit this logically without compromising fiscal security?`
+    },
+    {
+      memberId: 'raghavan',
+      focus: 'Situation Reaction (SRT - Ethics)',
+      text: `Imagine you are appointed as the District Commissioner. A major developmental highway is approved, but local groups organize massive blocking protests. Concurrently, a local political figure calls demanding you sanction immediate force to clear the site. How do you resolve this using constitutional ethics?`
+    },
+    {
+      memberId: 'swamy',
+      focus: 'Critical National Policy',
+      text: `Finally, with your background in ${academicDegree}, how do you evaluate the national policy guidelines on semiconductor manufacturing corridors? Do you believe India's subsidy model is structured logically to compete globally?`
+    }
+  ];
+
+  // Board transitional feedback spoke after user answers
+  const transitionFeedbacks = [
+    `Thank you for sharing your background, ${candidateName}. Dr. Mathur is done. Let me hand over to Prof. Aruna Swamy for optional subject analysis.`,
+    `A solid overview of optional themes. Prof. Swamy is satisfied. Shri Vijay Raghavan will now ask you an analytical aptitude and ethics question.`,
+    `Logic audit captured. Now, Shri Vijay Raghavan will present a critical Situation Reaction Test.`,
+    `A very practical solution to ethical friction. Let us hand back to Prof. Aruna Swamy for the final policy query.`,
+    `Thank you, candidate. The board panel is satisfied with your critical reasoning. The chairperson is now closing the interview session.`
+  ];
+
+  const activeQuestion = questions[currentIdx] || questions[0];
+  const activeMember = boardMembers[activeQuestion.memberId];
+
   // Initialize Speech Recognition
   useEffect(() => {
     if (SpeechRecognitionClass) {
       const rec = new SpeechRecognitionClass();
       rec.continuous = true;
       rec.interimResults = true;
-      rec.lang = 'en-IN'; // Indian English pronunciation context
+      rec.lang = 'en-IN';
 
       rec.onstart = () => {
         setIsListening(true);
@@ -110,11 +155,11 @@ export default function AIInterviewer() {
         let finalTrans = '';
         
         for (let i = event.resultIndex; i < event.results.length; ++i) {
-          const transcriptText = event.results[i][0].transcript;
+          const text = event.results[i][0].transcript;
           if (event.results[i].isFinal) {
-            finalTrans += transcriptText;
+            finalTrans += text;
           } else {
-            interimTrans += transcriptText;
+            interimTrans += text;
           }
         }
         
@@ -124,7 +169,7 @@ export default function AIInterviewer() {
             const separator = prev.endsWith(' ') || !prev ? '' : ' ';
             const updated = prev + separator + latestText;
             
-            // Auto-advance latency reduction: if user stops speaking for 2.2 seconds, auto-submit!
+            // Silence trigger: proceed automatically on 2.2 seconds of silence
             if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
             silenceTimerRef.current = setTimeout(() => {
               autoSubmitResponse(updated);
@@ -140,7 +185,7 @@ export default function AIInterviewer() {
       };
 
       rec.onerror = (e) => {
-        console.warn('Speech recognition error:', e.error);
+        console.warn('Recognition error:', e.error);
         setIsListening(false);
       };
 
@@ -152,25 +197,28 @@ export default function AIInterviewer() {
       window.speechSynthesis.cancel();
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     };
-  }, [optionalSubject]);
+  }, [optionalSubject, step]);
 
-  // Voice Speech synthesis (AI Speaks - Optimized with Indian Tone priority)
-  const speakQuestion = (text, callback) => {
+  // Voice synthesis with profile voice configurations
+  const speakWithMemberVoice = (text, memberId, callback) => {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
+    const member = boardMembers[memberId] || boardMembers.mathur;
     
-    // Prioritize natural Indian English voice tone
     const voices = window.speechSynthesis.getVoices();
-    const IndianVoice = voices.find(v => v.lang === 'en-IN') ||
-                        voices.find(v => v.lang.startsWith('en') && v.name.toLowerCase().includes('india')) ||
-                        voices.find(v => v.lang.startsWith('en') && v.name.toLowerCase().includes('google')) ||
-                        voices.find(v => v.lang.startsWith('en'));
-    if (IndianVoice) utterance.voice = IndianVoice;
+    const voice = voices.find(v => v.lang === 'en-IN') ||
+                  voices.find(v => v.lang.startsWith('en') && v.name.toLowerCase().includes('india')) ||
+                  voices.find(v => v.lang.startsWith('en') && v.name.toLowerCase().includes('google')) ||
+                  voices.find(v => v.lang.startsWith('en'));
+    if (voice) utterance.voice = voice;
     
-    utterance.rate = 1.05; // Quick responsive flow
-    
+    // Set custom modulated speeds and pitches!
+    utterance.pitch = member.voiceConfig.pitch;
+    utterance.rate = member.voiceConfig.rate;
+
     utterance.onstart = () => {
       setIsAiSpeaking(true);
+      setActiveBoardMemberId(memberId);
     };
     
     utterance.onend = () => {
@@ -197,21 +245,21 @@ export default function AIInterviewer() {
       setCameraActive(true);
       setMicActive(true);
     } catch (err) {
-      console.warn('Webcam permission blocked:', err);
+      console.warn('Camera failed:', err);
       setCameraActive(false);
     }
   };
 
   const stopMedia = () => {
     if (stream) {
-      stream.getTracks().forEach(track => track.stop());
+      stream.getTracks().forEach(t => t.stop());
     }
     setStream(null);
     setCameraActive(false);
     setMicActive(false);
   };
 
-  // Starts the mock interview flow
+  // Launch mock board session
   const handleStartInterview = async () => {
     setStep('interview');
     setCurrentIdx(0);
@@ -219,7 +267,6 @@ export default function AIInterviewer() {
     setUserTranscript('');
     await startCamera();
 
-    // Trigger AI speech for Q1
     setTimeout(() => {
       triggerAiQuestion(0);
     }, 800);
@@ -228,22 +275,17 @@ export default function AIInterviewer() {
   const triggerAiQuestion = (idx) => {
     const q = questions[idx];
     setAiText(q.text);
-    
-    speakQuestion(q.text, () => {
-      // AI finished speaking, auto-start mic capture
+    speakWithMemberVoice(q.text, q.memberId, () => {
       startMicListening();
     });
   };
 
-  // Mic capture functions
   const startMicListening = () => {
     if (recognitionRef.current) {
       setUserTranscript('');
       try {
         recognitionRef.current.start();
-      } catch (err) {
-        // already started
-      }
+      } catch (err) {}
     }
   };
 
@@ -254,7 +296,7 @@ export default function AIInterviewer() {
     setIsListening(false);
   };
 
-  // Auto-submit response on silence detection and trigger feedback conversational transitions
+  // Process response and trigger transition voice feedbacks
   const autoSubmitResponse = (textToSubmit) => {
     stopListeningAndSubmit();
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
@@ -268,24 +310,27 @@ export default function AIInterviewer() {
       const nextAnswers = [...prevAnswers, finalAnswer];
       const activeIdx = currentIdxRef.current;
 
-      // Speak transitional feedback first
+      // Speak transitional feedback using active board member
       const feedbackText = transitionFeedbacks[activeIdx];
       setAiText(feedbackText);
 
-      speakQuestion(feedbackText, () => {
-        // Once transitional feedback speech ends, trigger next question or show scorecard
+      // Chairperson Mathur does transitions, except Raghavan handles water/SRT
+      const transitionSpeakerId = activeIdx === 2 || activeIdx === 3 ? 'raghavan' : 'mathur';
+
+      speakWithMemberVoice(feedbackText, transitionSpeakerId, () => {
         if (activeIdx < questions.length - 1) {
           const nextIdx = activeIdx + 1;
           setCurrentIdx(nextIdx);
           triggerAiQuestion(nextIdx);
         } else {
-          // Finished last question, transition to evaluation results
+          // Finish session, load Mercor scorecard
           setEvaluating(true);
           stopMedia();
           setTimeout(() => {
             setEvaluating(false);
             setStep('result');
-          }, 2000);
+            setResultTab('summary');
+          }, 2400);
         }
       });
 
@@ -298,325 +343,415 @@ export default function AIInterviewer() {
     autoSubmitResponse(userTranscript);
   };
 
+  const handleSelectSample = () => {
+    setCandidateName('Dr. Avinash Deshmukh');
+    setStateName('Maharashtra');
+    setOptionalSubject('Sociology');
+    setAcademicDegree('MBBS from AFMC Pune');
+    setHobbies('Wildlife Photography, Marathon running');
+    setExperience('Medical Officer, Rural Health volunteer');
+  };
+
+  // Mercor-Style Transcript marked locations
+  const transcriptHighlights = [
+    {
+      q: `Q1: Introduction & Candidate Profile`,
+      ans: `My name is Rithika. I graduated in computer science engineering from Telangana. I am extremely motivated to join the civil services because it offers a direct developmental platform to implement technology pipelines inside municipal governance and public schools.`,
+      highlights: [
+        { startIdx: 125, endIdx: 220, type: 'good', text: 'direct developmental platform to implement technology pipelines inside municipal governance', feedback: 'Dr. Mathur: "Excellent focus. Connecting computer science degree parameters directly to municipal service delivery pipelines is highly practical."' }
+      ]
+    },
+    {
+      q: `Q2: Geography Optional Inquiry`,
+      ans: `In geography, El Niño triggers high sea-surface temperatures in the Pacific, weakening the monsoonal winds. This causes dry spells over central and southern India, meaning crop failure. We need to implement localized water conservation like farm ponds to mitigate this.`,
+      highlights: [
+        { startIdx: 35, endIdx: 82, type: 'good', text: 'high sea-surface temperatures in the Pacific, weakening the monsoonal winds', feedback: 'Prof. Swamy: "Strong conceptual accuracy. Candidate correctly maps El Niño physical anomalies to Indian monsoonal wind patterns."' },
+        { startIdx: 140, endIdx: 215, type: 'warn', text: 'farm ponds to mitigate this', feedback: 'Prof. Swamy: "Somewhat generic water recommendation. Citing specific schemes like PM Krishi Sinchayee Yojana or watershed clusters would score higher."' }
+      ]
+    },
+    {
+      q: `Q3: logical Aptitude Pension Case`,
+      ans: `To audit this logically, I will propose a dual authentication bypass. If iris scans fail, we will verify using local Aadhar OTP or physical verified registry certified by local block development officers to prevent denial of service.`,
+      highlights: [
+        { startIdx: 85, endIdx: 185, type: 'good', text: 'local Aadhar OTP or physical verified registry certified by local block development officers', feedback: 'Shri Raghavan: "Excellent administrative logic. Balances security checks with localized social audits to prevent service denial."' }
+      ]
+    },
+    {
+      q: `Q4: Situation Reaction Test (SRT)`,
+      ans: `If a politician pressures me to use force on protesters, I will politely decline. I will establish a direct dialogue channel with protest leaders to verify their grievances. Force will only be deployed as a last resort under IPC if public property is physically threatened.`,
+      highlights: [
+        { startIdx: 50, endIdx: 125, type: 'good', text: 'establish a direct dialogue channel with protest leaders to verify their grievances', feedback: 'Shri Raghavan: "High crisis leadership score. Prioritizes constitutional dialogue over coercive pressure, adhering to standard civil services ethics."' }
+      ]
+    }
+  ];
+
   return (
-    <div style={{ padding: '30px 40px', maxWidth: 1000, margin: '0 auto' }}>
+    <div style={{ padding: '30px 40px', maxWidth: 1100, margin: '0 auto' }}>
       
-      {/* Page Header */}
+      {/* Page Title */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--text)' }}>AI Personalized Assistant 🎙️</h1>
-          <p style={{ fontSize: 13, color: 'var(--text3)', marginTop: 4 }}>UPSC DAF & GS personalized oral board interviewer</p>
+          <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--text)' }}>AI Board Interview Simulator 🎙️</h1>
+          <p style={{ fontSize: 13, color: 'var(--text3)', marginTop: 4 }}>Mercor-inspired multi-specialist board mock session</p>
         </div>
       </div>
 
-      {/* Main card */}
-      <div style={{
-        background: 'var(--surface)',
-        border: '1px solid var(--border)',
-        borderRadius: 16,
-        padding: '30px',
-        minHeight: 480,
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'space-between',
-        position: 'relative'
-      }}>
-        
-        {/* STEP 1: SETUP PANEL */}
-        {step === 'setup' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 24, alignItems: 'center', padding: '40px 0' }}>
-            <div style={{
-              width: 60, height: 60, borderRadius: 20,
-              background: 'var(--purple-dim)',
-              display: 'flex', alignItems: 'center', justifycontent: 'center',
-              fontSize: 26, color: 'var(--purple)', border: '1px solid rgba(124,111,255,0.2)'
-            }}>🎙️</div>
-
-            <div style={{ textAlign: 'center', maxWidth: 450 }}>
-              <h2 style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>Interactive UPSC Board Panel</h2>
-              <p style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.6 }}>
-                Set your exam profile below. The AI will speak questions out loud and transcribe your voice answers in real time to rate your pacing, syllabus alignment, and ethics coherence.
-              </p>
+      {/* STEP 1: DAF SETUP FORM */}
+      {step === 'setup' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 30 }}>
+          {/* Left panel: Form */}
+          <div style={{
+            background: 'var(--surface)', border: '1px solid var(--border)',
+            borderRadius: 16, padding: '30px', display: 'flex', flexDirection: 'column', gap: 18
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: 14, marginBottom: 10 }}>
+              <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>UPSC Profile & DAF Configurator</h2>
+              <button 
+                onClick={handleSelectSample}
+                style={{
+                  background: 'var(--purple-dim)', border: '1px solid rgba(124,111,255,0.2)',
+                  borderRadius: 8, padding: '5px 12px', fontSize: 11, color: 'var(--purple)', fontWeight: 600
+                }}
+              >
+                ⚡ Use Sample Profile
+              </button>
             </div>
 
-            {/* Inputs grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, width: '100%', maxWidth: 500 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <div>
-                <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.6px', display: 'block', marginBottom: 6 }}>Target UPSC Year</label>
-                <select
-                  value={targetYear}
-                  onChange={(e) => setTargetYear(e.target.value)}
+                <label style={{ fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Candidate Name</label>
+                <input
+                  type="text"
+                  value={candidateName}
+                  onChange={(e) => setCandidateName(e.target.value)}
                   style={{
-                    width: '100%', padding: '10px 12px', borderRadius: 8,
+                    width: '100%', padding: '10px', borderRadius: 8,
                     background: 'var(--surface2)', border: '1px solid var(--border)',
                     color: 'var(--text)', fontSize: 12, outline: 'none'
                   }}
-                >
-                  <option value="All Years">UPSC Aspirant (All Years)</option>
-                  <option value="2026">UPSC 2026 Attempt</option>
-                  <option value="2027">UPSC 2027 Attempt</option>
-                  <option value="2028">UPSC 2028 Attempt</option>
-                </select>
+                />
               </div>
 
               <div>
-                <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.6px', display: 'block', marginBottom: 6 }}>Optional Subject</label>
+                <label style={{ fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Home State</label>
+                <input
+                  type="text"
+                  value={stateName}
+                  onChange={(e) => setStateName(e.target.value)}
+                  style={{
+                    width: '100%', padding: '10px', borderRadius: 8,
+                    background: 'var(--surface2)', border: '1px solid var(--border)',
+                    color: 'var(--text)', fontSize: 12, outline: 'none'
+                  }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div>
+                <label style={{ fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Optional Subject</label>
                 <select
                   value={optionalSubject}
                   onChange={(e) => setOptionalSubject(e.target.value)}
                   style={{
-                    width: '100%', padding: '10px 12px', borderRadius: 8,
+                    width: '100%', padding: '10px', borderRadius: 8,
                     background: 'var(--surface2)', border: '1px solid var(--border)',
                     color: 'var(--text)', fontSize: 12, outline: 'none'
                   }}
                 >
-                  <option value="Political Science (PSIR)">Political Science (PSIR)</option>
                   <option value="Geography">Geography</option>
-                  <option value="History">History</option>
+                  <option value="Political Science (PSIR)">Political Science (PSIR)</option>
                   <option value="Sociology">Sociology</option>
                   <option value="Public Administration">Public Administration</option>
                 </select>
               </div>
+
+              <div>
+                <label style={{ fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Educational Degree</label>
+                <input
+                  type="text"
+                  value={academicDegree}
+                  onChange={(e) => setAcademicDegree(e.target.value)}
+                  style={{
+                    width: '100%', padding: '10px', borderRadius: 8,
+                    background: 'var(--surface2)', border: '1px solid var(--border)',
+                    color: 'var(--text)', fontSize: 12, outline: 'none'
+                  }}
+                />
+              </div>
             </div>
 
-            {/* Action Trigger */}
+            <div>
+              <label style={{ fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Hobbies & Extracurriculars</label>
+              <input
+                type="text"
+                value={hobbies}
+                onChange={(e) => setHobbies(e.target.value)}
+                style={{
+                  width: '100%', padding: '10px', borderRadius: 8,
+                  background: 'var(--surface2)', border: '1px solid var(--border)',
+                  color: 'var(--text)', fontSize: 12, outline: 'none'
+                }}
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Work Draft / Resume Notes</label>
+              <textarea
+                value={experience}
+                onChange={(e) => setExperience(e.target.value)}
+                placeholder="Include work experience or core topics you want the board to investigate..."
+                style={{
+                  width: '100%', height: 60, padding: '10px', borderRadius: 8,
+                  background: 'var(--surface2)', border: '1px solid var(--border)',
+                  color: 'var(--text)', fontSize: 12, outline: 'none', resize: 'none'
+                }}
+              />
+            </div>
+
             <button
               onClick={handleStartInterview}
               style={{
-                background: 'var(--purple)', color: '#fff',
-                border: 'none', borderRadius: 12,
-                padding: '12px 28px', fontSize: 13, fontWeight: 700,
-                boxShadow: '0 4px 14px rgba(124,111,255,0.3)',
-                marginTop: 10, display: 'flex', alignItems: 'center', gap: 8
+                background: 'var(--purple)', color: '#fff', border: 'none',
+                borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 700,
+                boxShadow: '0 4px 14px rgba(124,111,255,0.3)', marginTop: 8
               }}
             >
-              🚀 Initialize Voice Mock Panel
+              Start Multi-Member Board Mock Session
             </button>
           </div>
-        )}
 
-        {/* STEP 2: ACTIVE BOARD PANEL */}
-        {step === 'interview' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-            {/* Split screen feeds */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-              
-              {/* Left Side: Aspirant Camera */}
-              <div style={{
-                background: '#07080c', border: '1px solid var(--border)',
-                borderRadius: 14, overflow: 'hidden', aspectRatio: '1.5',
-                display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
-                position: 'relative'
-              }}>
-                {cameraActive ? (
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }}
-                  />
-                ) : (
-                  <div style={{
-                    position: 'absolute', inset: 0, display: 'flex',
-                    flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                    gap: 12, textAlign: 'center', background: 'var(--surface2)'
-                  }}>
-                    <span style={{ fontSize: 24 }}>📷</span>
-                    <span style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '1px' }}>Camera Inactive</span>
-                  </div>
-                )}
-
-                {/* Bottom Overlay bar */}
-                <div style={{
-                  padding: '8px 12px', background: 'rgba(9,9,11,0.75)',
-                  backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'space-between',
-                  alignItems: 'center', position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 2
+          {/* Right panel: Board Details */}
+          <div style={{
+            background: 'var(--surface)', border: '1px solid var(--border)',
+            borderRadius: 16, padding: '30px', display: 'flex', flexDirection: 'column', gap: 20
+          }}>
+            <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>Active UPSC Mock Board Members</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {Object.values(boardMembers).map((m) => (
+                <div key={m.name} style={{
+                  display: 'flex', gap: 14, background: 'var(--surface2)',
+                  border: '1px solid var(--border)', borderRadius: 12, padding: '12px'
                 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: cameraActive ? 'var(--green)' : 'var(--text3)' }} />
-                    Aspirant: {user.name || 'Candidate'}
-                  </div>
-                  <button
-                    onClick={() => {
-                      if (cameraActive) stopMedia();
-                      else startCamera();
-                    }}
-                    style={{
-                      background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)',
-                      borderRadius: 6, padding: '4px 8px', fontSize: 10, color: '#fff'
-                    }}
-                  >
-                    {cameraActive ? 'Mute Video' : 'Start Video'}
-                  </button>
-                </div>
-              </div>
-
-              {/* Right Side: Board Member Avatar */}
-              <div style={{
-                background: 'var(--surface2)', border: '1px solid var(--border)',
-                borderRadius: 14, overflow: 'hidden', aspectRatio: '1.5',
-                display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
-                padding: '20px', position: 'relative'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 24 }}>{m.avatar}</span>
                   <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>UPSC Board Member</div>
-                    <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.4px' }}>Panel Chairperson</div>
+                    <strong style={{ fontSize: 12, color: 'var(--text)', display: 'block' }}>{m.name}</strong>
+                    <span style={{ fontSize: 9, color: 'var(--purple)', fontWeight: 650, textTransform: 'uppercase', display: 'block', marginTop: 1 }}>{m.role}</span>
+                    <p style={{ fontSize: 10, color: 'var(--text2)', marginTop: 4, lineHeight: 1.4 }}>{m.specialty}</p>
                   </div>
-                  <span style={{
-                    fontSize: 9, fontWeight: 700, padding: '2px 8px',
-                    borderRadius: 12, background: 'var(--purple-dim)', color: 'var(--purple)'
-                  }}>Q {currentIdx + 1} of 4</span>
                 </div>
-
-                {/* Speech transcript */}
-                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px 0' }}>
-                  <p style={{ fontSize: 12, color: 'var(--text)', textAlign: 'center', lineHeight: 1.6, fontStyle: 'italic', maxWidth: 380 }}>
-                    "{aiText || 'Initializing Board Chairperson...'}"
-                  </p>
-                </div>
-
-                {/* Speech wave footer */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: '10px' }}>
-                  <span style={{ fontSize: 10, color: 'var(--purple)', fontWeight: 600 }}>{activeQuestion.focus}</span>
-                  
-                  {isAiSpeaking && (
-                    <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end', height: 14 }}>
-                      {soundWaveBars.map((_, i) => (
-                        <div key={i} style={{
-                          width: 2, background: 'var(--purple)',
-                          height: 4 + Math.random() * 10,
-                          borderRadius: 2,
-                          animation: 'pulse 0.8s infinite alternate'
-                        }} />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-            </div>
-
-            {/* User Response controls */}
-            <div style={{
-              background: 'var(--surface2)', border: '1px solid var(--border)',
-              borderRadius: 14, padding: '20px', display: 'flex', flexDirection: 'column', gap: 14
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{
-                  fontSize: 18, color: isListening ? 'var(--red)' : 'var(--text3)'
-                }}>🎙️</span>
-                <span style={{ fontSize: 11, fontWeight: 600, color: isListening ? 'var(--text)' : 'var(--text3)' }}>
-                  {isListening ? 'Speech Recognition Active... Speak now (Will auto-submit on 2.2s silence)' : 'Ready to record. Click "Speak Answer" to start.'}
-                </span>
-              </div>
-
-              <textarea
-                value={userTranscript}
-                onChange={(e) => setUserTranscript(e.target.value)}
-                placeholder="Voice answers will transcribe here in real time. You can also edit or type manually if speech is disabled..."
-                style={{
-                  width: '100%', height: 75, padding: '10px 12px', borderRadius: 8,
-                  background: 'var(--surface)', border: '1px solid var(--border)',
-                  color: 'var(--text)', fontSize: 12, resize: 'none', outline: 'none'
-                }}
-              />
-
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <button
-                  onClick={() => {
-                    if (isListening) stopListeningAndSubmit();
-                    else startMicListening();
-                  }}
-                  style={{
-                    background: isListening ? 'var(--red)' : 'var(--surface)',
-                    border: '1px solid var(--border)', borderRadius: 10,
-                    padding: '8px 16px', fontSize: 12, fontWeight: 600,
-                    color: isListening ? '#fff' : 'var(--text)', cursor: 'pointer'
-                  }}
-                >
-                  {isListening ? '🛑 Stop Recording' : '🎙️ Speak Answer'}
-                </button>
-
-                <button
-                  onClick={handleNextStep}
-                  disabled={!userTranscript.trim()}
-                  style={{
-                    background: 'var(--purple)', border: 'none', borderRadius: 10,
-                    padding: '8px 20px', fontSize: 12, fontWeight: 700, color: '#fff',
-                    opacity: userTranscript.trim() ? 1 : 0.4, cursor: 'pointer'
-                  }}
-                >
-                  {currentIdx < questions.length - 1 ? 'Next Question →' : 'Finish & Evaluate'}
-                </button>
-              </div>
+              ))}
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* STEP 3: PERFORMANCE REVIEW SCORECARD */}
-        {step === 'result' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 24, padding: '10px 0' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 6 }}>
-              <span style={{ fontSize: 32 }}>🏆</span>
-              <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>UPSC Mock Board Evaluation</h2>
-              <p style={{ fontSize: 12, color: 'var(--text3)' }}>Your vocal metrics and conceptual answers have been calculated</p>
+      {/* STEP 2: ACTIVE BOARD SESSION */}
+      {step === 'interview' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          
+          {/* Active Board Row */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+            {Object.entries(boardMembers).map(([id, m]) => {
+              const isActive = activeBoardMemberId === id;
+              return (
+                <div key={id} style={{
+                  background: isActive ? 'var(--surface2)' : 'var(--surface)',
+                  border: isActive ? '1px solid var(--purple)' : '1px solid var(--border)',
+                  boxShadow: isActive ? '0 0 15px rgba(124,111,255,0.15)' : 'none',
+                  borderRadius: 12, padding: '12px 16px', display: 'flex', gap: 12, alignItems: 'center',
+                  transition: 'all 0.3s'
+                }}>
+                  <div style={{
+                    width: 32, height: 32, borderRadius: '50%',
+                    background: isActive ? 'var(--purple)' : 'var(--surface2)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18
+                  }}>{m.avatar}</div>
+                  <div>
+                    <strong style={{ fontSize: 12, color: isActive ? 'var(--text)' : 'var(--text2)', display: 'block' }}>{m.name}</strong>
+                    <span style={{ fontSize: 8, color: isActive ? 'var(--purple)' : 'var(--text3)', fontWeight: 700, textTransform: 'uppercase' }}>{m.role}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Split Screen Webcam & Speaking Board */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+            
+            {/* Webcam feed */}
+            <div style={{
+              background: '#07080c', border: '1px solid var(--border)',
+              borderRadius: 16, overflow: 'hidden', aspectRatio: '1.5',
+              display: 'flex', flexDirection: 'column', justifycontent: 'flex-end',
+              position: 'relative'
+            }}>
+              {cameraActive ? (
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }}
+                />
+              ) : (
+                <div style={{
+                  position: 'absolute', inset: 0, display: 'flex',
+                  flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                  gap: 12, textAlign: 'center', background: 'var(--surface2)'
+                }}>
+                  <span style={{ fontSize: 24 }}>📷</span>
+                  <span style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '1px' }}>Camera Inactive</span>
+                </div>
+              )}
+
+              {/* Bottom overlay info bar */}
+              <div style={{
+                padding: '8px 12px', background: 'rgba(9,9,11,0.75)',
+                backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'space-between',
+                alignItems: 'center', position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 2
+              }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: cameraActive ? 'var(--green)' : 'var(--text3)' }} />
+                  Aspirant: {candidateName}
+                </div>
+                <button
+                  onClick={() => {
+                    if (cameraActive) stopMedia();
+                    else startCamera();
+                  }}
+                  style={{
+                    background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: 6, padding: '4px 8px', fontSize: 10, color: '#fff'
+                  }}
+                >
+                  {cameraActive ? 'Mute Video' : 'Start Video'}
+                </button>
+              </div>
             </div>
 
-            {/* Performance Analytics Card */}
+            {/* Speaking Board Member Details */}
             <div style={{
-              background: 'var(--surface2)',
-              border: '1px solid var(--border)',
-              borderRadius: 14,
-              padding: '24px'
+              background: 'var(--surface2)', border: '1px solid var(--border)',
+              borderRadius: 16, overflow: 'hidden', aspectRatio: '1.5',
+              display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+              padding: '24px', position: 'relative'
             }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--purple)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 16 }}>
-                Performance Analytics Card
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>Active Speaker: {activeMember.name}</div>
+                  <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase' }}>{activeMember.role}</div>
+                </div>
+                <span style={{
+                  fontSize: 9, fontWeight: 700, padding: '2px 8px',
+                  borderRadius: 12, background: 'var(--purple-dim)', color: 'var(--purple)'
+                }}>Question {currentIdx + 1} of 5</span>
               </div>
 
-              {/* Dials grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 20 }}>
-                <div style={{
-                  background: 'var(--surface)', border: '1px solid var(--border)',
-                  borderRadius: 10, padding: '14px', textAlign: 'center'
-                }}>
-                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 6 }}>Structure & Coherence</div>
-                  <strong style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)' }}>8.5<span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text3)' }}>/10</span></strong>
-                </div>
-
-                <div style={{
-                  background: 'var(--surface)', border: '1px solid var(--border)',
-                  borderRadius: 10, padding: '14px', textAlign: 'center'
-                }}>
-                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 6 }}>Syllabus Alignment</div>
-                  <strong style={{ fontSize: 22, fontWeight: 700, color: 'var(--purple)' }}>7.8<span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text3)' }}>/10</span></strong>
-                </div>
-
-                <div style={{
-                  background: 'var(--surface)', border: '1px solid var(--border)',
-                  borderRadius: 10, padding: '14px', textAlign: 'center'
-                }}>
-                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 6 }}>Speech Pacing / Tone</div>
-                  <strong style={{ fontSize: 22, fontWeight: 700, color: 'var(--teal)' }}>9.0<span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text3)' }}>/10</span></strong>
-                </div>
-              </div>
-
-              {/* Actionable feedback box */}
-              <div style={{
-                background: 'var(--surface)', borderLeft: '3px solid var(--purple)',
-                padding: '14px 16px', borderRadius: '0 8px 8px 0', fontSize: 12, lineHeight: 1.6
-              }}>
-                <div style={{ fontWeight: 700, color: 'var(--purple)', marginBottom: 4 }}>Actionable Feedback</div>
-                <p style={{ color: 'var(--text2)' }}>
-                  "Your optional conceptual depth was strong. Work on linking current events to paper frameworks."
+              {/* Text display */}
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px 0' }}>
+                <p style={{ fontSize: 12, color: 'var(--text)', textAlign: 'center', lineHeight: 1.6, fontStyle: 'italic', maxWidth: 390 }}>
+                  "{aiText || 'Starting UPSC Panel chairperson questions...'}"
                 </p>
               </div>
+
+              {/* Speech waves */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: '10px' }}>
+                <span style={{ fontSize: 9, color: 'var(--purple)', fontWeight: 700, textTransform: 'uppercase' }}>Focus: {activeQuestion.focus}</span>
+                
+                {isAiSpeaking && (
+                  <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end', height: 14 }}>
+                    {soundWaveBars.map((_, i) => (
+                      <div key={i} style={{
+                        width: 2, background: 'var(--purple)',
+                        height: 4 + Math.random() * 10,
+                        borderRadius: 2,
+                        animation: 'pulse 0.8s infinite alternate'
+                      }} />
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Bottom Actions */}
-            <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+          </div>
+
+          {/* User Transcript and Mic Capture */}
+          <div style={{
+            background: 'var(--surface2)', border: '1px solid var(--border)',
+            borderRadius: 16, padding: '20px', display: 'flex', flexDirection: 'column', gap: 14
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{
+                fontSize: 18, color: isListening ? 'var(--red)' : 'var(--text3)'
+              }}>🎙️</span>
+              <span style={{ fontSize: 11, fontWeight: 600, color: isListening ? 'var(--text)' : 'var(--text3)' }}>
+                {isListening ? 'Speech Recognition Active... Speak now (Will auto-submit on 2.2s silence)' : 'Ready to record. Click "Speak Answer" to start.'}
+              </span>
+            </div>
+
+            <textarea
+              value={userTranscript}
+              onChange={(e) => setUserTranscript(e.target.value)}
+              placeholder="Your voice responses will transcribe here in real time. You can edit it manually before submitting..."
+              style={{
+                width: '100%', height: 80, padding: '10px 12px', borderRadius: 8,
+                background: 'var(--surface)', border: '1px solid var(--border)',
+                color: 'var(--text)', fontSize: 12, resize: 'none', outline: 'none'
+              }}
+            />
+
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <button
+                onClick={() => {
+                  if (isListening) stopListeningAndSubmit();
+                  else startMicListening();
+                }}
+                style={{
+                  background: isListening ? 'var(--red)' : 'var(--surface)',
+                  border: '1px solid var(--border)', borderRadius: 10,
+                  padding: '8px 18px', fontSize: 12, fontWeight: 600,
+                  color: isListening ? '#fff' : 'var(--text)', cursor: 'pointer'
+                }}
+              >
+                {isListening ? '🛑 Stop Recording' : '🎙️ Speak Answer'}
+              </button>
+
+              <button
+                onClick={handleNextStep}
+                disabled={!userTranscript.trim()}
+                style={{
+                  background: 'var(--purple)', border: 'none', borderRadius: 10,
+                  padding: '8px 24px', fontSize: 12, fontWeight: 700, color: '#fff',
+                  opacity: userTranscript.trim() ? 1 : 0.4, cursor: 'pointer'
+                }}
+              >
+                {currentIdx < questions.length - 1 ? 'Next Question →' : 'Finish & Compile Scorecard'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 3: MERCOR-STYLE EVALUATION CARD */}
+      {step === 'result' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          
+          {/* Executive Overview Header */}
+          <div style={{
+            background: 'var(--surface)', border: '1px solid var(--border)',
+            borderRadius: 16, padding: '24px', display: 'flex', justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <div>
+              <span style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>Mercor Evaluation Placement Verdict</span>
+              <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', marginTop: 4 }}>
+                Highly Recommended <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--green)', background: 'var(--green-dim)', padding: '3px 8px', borderRadius: 4, marginLeft: 10 }}>Verdict: Pass (268/300)</span>
+              </h2>
+            </div>
+            
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button 
                 onClick={() => {
                   setStep('setup');
                   setCurrentIdx(0);
@@ -624,28 +759,225 @@ export default function AIInterviewer() {
                 }}
                 style={{
                   background: 'var(--surface2)', border: '1px solid var(--border)',
-                  borderRadius: 10, padding: '10px 24px', fontSize: 12, fontWeight: 600,
-                  color: 'var(--text)', cursor: 'pointer'
+                  borderRadius: 8, padding: '8px 16px', fontSize: 12, color: 'var(--text)', fontWeight: 600
                 }}
               >
-                🔄 Re-take Interview
+                🔄 Re-take Mock
               </button>
-
-              <button
+              <button 
                 onClick={() => navigate('/dashboard')}
                 style={{
                   background: 'var(--purple)', border: 'none',
-                  borderRadius: 10, padding: '10px 24px', fontSize: 12, fontWeight: 700,
-                  color: '#fff', cursor: 'pointer'
+                  borderRadius: 8, padding: '8px 20px', fontSize: 12, color: '#fff', fontWeight: 700
                 }}
               >
-                Return to Dashboard
+                Dashboard
               </button>
             </div>
           </div>
-        )}
 
-      </div>
+          {/* Mercor Tabs Selector */}
+          <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', gap: 8 }}>
+            {[
+              { id: 'summary', label: '📊 Summary Metrics' },
+              { id: 'transcript', label: '📝 Transcript Timeline' },
+              { id: 'skills', label: '🏆 Detailed Skill Matrix' },
+              { id: 'plan', label: '📚 ARC-II Syllabus Plan' }
+            ].map(t => (
+              <button
+                key={t.id}
+                onClick={() => {
+                  setResultTab(t.id);
+                  setActiveCritiqueId(null);
+                }}
+                style={{
+                  padding: '12px 20px', border: 'none', background: 'transparent',
+                  color: resultTab === t.id ? 'var(--purple)' : 'var(--text2)',
+                  borderBottom: resultTab === t.id ? '2px solid var(--purple)' : '2px solid transparent',
+                  fontSize: 12, fontWeight: resultTab === t.id ? 700 : 500, transition: 'all 0.2s'
+                }}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Tab content area */}
+          <div style={{ minHeight: 300 }}>
+            
+            {/* TAB 1: SUMMARY METRICS */}
+            {resultTab === 'summary' && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 16 }}>
+                
+                <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 10 }}>Structure & Coherence</div>
+                  <strong style={{ fontSize: 26, color: 'var(--text)', fontFamily: 'monospace' }}>8.5<span style={{ fontSize: 11, color: 'var(--text3)' }}>/10</span></strong>
+                  <p style={{ fontSize: 10, color: 'var(--text2)', marginTop: 8, lineHeight: 1.4 }}>Balanced standard introductions. Logical paragraph segregation was noted across answers.</p>
+                </div>
+
+                <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 10 }}>Syllabus Alignment</div>
+                  <strong style={{ fontSize: 26, color: 'var(--purple)', fontFamily: 'monospace' }}>7.8<span style={{ fontSize: 11, color: 'var(--text3)' }}>/10</span></strong>
+                  <p style={{ fontSize: 10, color: 'var(--text2)', marginTop: 8, lineHeight: 1.4 }}>Optional subject terms were solid. Citing specific developmental schemes will increase weight.</p>
+                </div>
+
+                <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 10 }}>Speech Pacing / Tone</div>
+                  <strong style={{ fontSize: 26, color: 'var(--teal)', fontFamily: 'monospace' }}>9.0<span style={{ fontSize: 11, color: 'var(--text3)' }}>/10</span></strong>
+                  <p style={{ fontSize: 10, color: 'var(--text2)', marginTop: 8, lineHeight: 1.4 }}>Indian English voice pacing was stable, maintaining a steady conversational cadence.</p>
+                </div>
+
+                <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 10 }}>Ethics Reasoning (GS-4)</div>
+                  <strong style={{ fontSize: 26, color: 'var(--amber)', fontFamily: 'monospace' }}>8.8<span style={{ fontSize: 11, color: 'var(--text3)' }}>/10</span></strong>
+                  <p style={{ fontSize: 10, color: 'var(--text2)', marginTop: 8, lineHeight: 1.4 }}>Balanced situation reaction answers, adhering strictly to constitutional values under pressure.</p>
+                </div>
+
+              </div>
+            )}
+
+            {/* TAB 2: TRANSCRIPT TIMELINE ANALYSIS (Mercor Highlight Feature) */}
+            {resultTab === 'transcript' && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 20 }}>
+                {/* Left side: Highlighted Transcripts */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {transcriptHighlights.map((t, idx) => (
+                    <div key={idx} style={{
+                      background: 'var(--surface)', border: '1px solid var(--border)',
+                      borderRadius: 14, padding: '16px'
+                    }}>
+                      <strong style={{ fontSize: 11, color: 'var(--purple)', display: 'block', marginBottom: 8 }}>{t.q}</strong>
+                      <p style={{ fontSize: 12, color: 'var(--text)', lineHeight: 1.7 }}>
+                        {/* Map highlights */}
+                        {(() => {
+                          let lastIdx = 0;
+                          const elements = [];
+                          t.highlights.forEach((h, hIdx) => {
+                            const before = t.ans.slice(lastIdx, h.startIdx);
+                            const matched = t.ans.slice(h.startIdx, h.endIdx);
+                            elements.push(before);
+                            elements.push(
+                              <span
+                                key={hIdx}
+                                onClick={() => setActiveCritiqueId(`${idx}-${hIdx}`)}
+                                style={{
+                                  background: h.type === 'good' ? 'var(--teal-dim)' : 'var(--amber-dim)',
+                                  color: h.type === 'good' ? 'var(--teal)' : 'var(--amber)',
+                                  borderBottom: h.type === 'good' ? '1px dashed var(--teal)' : '1px dashed var(--amber)',
+                                  padding: '1px 3px', borderRadius: 4, cursor: 'pointer', fontWeight: 555
+                                }}
+                              >
+                                {matched}
+                              </span>
+                            );
+                            lastIdx = h.endIdx;
+                          });
+                          elements.push(t.ans.slice(lastIdx));
+                          return elements;
+                        })()}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Right side: Clickable active critique details */}
+                <div style={{
+                  background: 'var(--surface2)', border: '1px solid var(--border)',
+                  borderRadius: 14, padding: '20px', position: 'sticky', top: 80, height: 'fit-content'
+                }}>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', display: 'block', marginBottom: 12 }}>Mercor Interactive Critique</span>
+                  {activeCritiqueId ? (
+                    (() => {
+                      const [tIdx, hIdx] = activeCritiqueId.split('-').map(Number);
+                      const target = transcriptHighlights[tIdx].highlights[hIdx];
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                          <div style={{
+                            fontSize: 11, padding: '8px 12px', background: 'var(--surface)',
+                            borderLeft: target.type === 'good' ? '3px solid var(--teal)' : '3px solid var(--amber)',
+                            color: 'var(--text2)', borderRadius: '0 6px 6px 0', fontStyle: 'italic'
+                          }}>
+                            "{target.text}"
+                          </div>
+                          <div>
+                            <strong style={{ fontSize: 12, color: 'var(--text)', display: 'block' }}>Panel Annotation</strong>
+                            <p style={{ fontSize: 11, color: 'var(--text2)', marginTop: 6, lineHeight: 1.5 }}>{target.feedback}</p>
+                          </div>
+                        </div>
+                      );
+                    })()
+                  ) : (
+                    <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text3)' }}>
+                      <span style={{ fontSize: 24, display: 'block', marginBottom: 10 }}>👆</span>
+                      <p style={{ fontSize: 11 }}>Click any highlighted phrase in the transcripts to view detailed board panel annotations and corrections.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* TAB 3: SKILL MATRIX */}
+            {resultTab === 'skills' && (
+              <div style={{
+                background: 'var(--surface)', border: '1px solid var(--border)',
+                borderRadius: 16, padding: '24px', display: 'flex', flexDirection: 'column', gap: 16
+              }}>
+                <h4 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', borderBottom: '1px solid var(--border)', paddingBottom: 10, marginBottom: 4 }}>Granular Skills Evaluation Map</h4>
+                {[
+                  { name: 'Syllabus Keyword Precision', score: 78, desc: 'Use of specific standard terms (e.g. Finance Commission, JP Narayan doctrines, PM-KMY).' },
+                  { name: 'Communication Delivery & Pacing', score: 92, desc: 'Maintaining steady 110-135 words-per-minute voice cadence. Smooth transitions.' },
+                  { name: 'GS-4 Ethics Coherence', score: 86, desc: 'Logical balance of rules and empathy. Prioritizing constitutional dialogue over physical force.' },
+                  { name: 'Critical Problem Solving & Aptitude', score: 80, desc: 'Logical segregation of pension audit queries and dual authentication bypass suggestions.' },
+                  { name: 'Stress Handling under Cross-Examination', score: 85, desc: 'Stable voice pitch/modulations when questioned with administrative gravity.' }
+                ].map(s => (
+                  <div key={s.name} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                      <strong style={{ color: 'var(--text)' }}>{s.name}</strong>
+                      <span style={{ fontWeight: 700, color: 'var(--purple)' }}>{s.score}%</span>
+                    </div>
+                    <div style={{ height: 6, background: 'var(--surface2)', borderRadius: 3, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', background: 'var(--purple)', width: `${s.score}%`, borderRadius: 3 }} />
+                    </div>
+                    <span style={{ fontSize: 10, color: 'var(--text3)' }}>{s.desc}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* TAB 4: ARC-II DEVELOP PLAN */}
+            {resultTab === 'plan' && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                <div style={{
+                  background: 'var(--surface)', border: '1px solid var(--border)',
+                  borderRadius: 14, padding: '20px', display: 'flex', flexDirection: 'column', gap: 12
+                }}>
+                  <strong style={{ fontSize: 13, color: 'var(--text)', borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>📖 Recommended Reading Lists</strong>
+                  <ul style={{ paddingLeft: 20, fontSize: 12, color: 'var(--text2)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <li><strong>2nd Administrative Reforms Commission (ARC-II)</strong>: Chapter 4 on "Ethics in Governance" for situation reaction scenarios.</li>
+                    <li><strong>Economic Survey Chapter 6</strong>: Study local rural investment figures and PM-PMKSY farm ponds telemetry metrics.</li>
+                    <li><strong>15th Finance Commission guidelines</strong>: Review local bodies fund allocation formulas.</li>
+                  </ul>
+                </div>
+
+                <div style={{
+                  background: 'var(--surface)', border: '1px solid var(--border)',
+                  borderRadius: 14, padding: '20px', display: 'flex', flexDirection: 'column', gap: 12
+                }}>
+                  <strong style={{ fontSize: 13, color: 'var(--text)', borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>📋 Active Improvement Plan</strong>
+                  <ul style={{ paddingLeft: 20, fontSize: 12, color: 'var(--text2)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <li><strong>Minimize generic advice</strong>: When asking policy questions, immediately back arguments by naming the specific regulatory body or ministry scheme.</li>
+                    <li><strong>Voice pacing balance</strong>: Practice speaking at exactly 120 WPM. Focus on sentence-end breath pauses.</li>
+                    <li><strong>Structured debate logs</strong>: Follow a 3-part layout: Acknowledge crisis, cite constitutional articles, suggest digital social audits.</li>
+                  </ul>
+                </div>
+              </div>
+            )}
+
+          </div>
+
+        </div>
+      )}
+
     </div>
   );
 }

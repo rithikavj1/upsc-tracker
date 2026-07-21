@@ -53,3 +53,48 @@ body.light {
   --red: #DC2626;
   --red-dim: rgba(220,38,38,0.12);
 }
+
+/* Premium Animations & UI Utilities */
+@keyframes soundwave-pulse {
+  0% { transform: scaleY(0.3); }
+  50% { transform: scaleY(1.0); }
+  100% { transform: scaleY(0.3); }
+}
+
+.soundwave-bar {
+  animation: soundwave-pulse 0.7s infinite ease-in-out;
+  transform-origin: bottom;
+}
+
+@keyframes scanner-sweep {
+  0% { transform: translateY(0%); }
+  50% { transform: translateY(350%); }
+  100% { transform: translateY(0%); }
+}
+
+.camera-scanner {
+  animation: scanner-sweep 4s infinite linear;
+}
+
+@keyframes breathe-glow {
+  0% { box-shadow: 0 0 10px rgba(124, 111, 255, 0.15); }
+  50% { box-shadow: 0 0 25px rgba(124, 111, 255, 0.35); }
+  100% { box-shadow: 0 0 10px rgba(124, 111, 255, 0.15); }
+}
+
+.active-glow {
+  animation: breathe-glow 2.5s infinite ease-in-out;
+}
+
+.glass-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.25);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.glass-panel:hover {
+  border-color: var(--border2);
+  box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.35);
+}
