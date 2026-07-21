@@ -34,6 +34,9 @@ export default function AIInterviewer() {
   const [evaluating, setEvaluating] = useState(false);
   const [activeBoardMemberId, setActiveBoardMemberId] = useState('mathur');
 
+  // Silence threshold progress bar state
+  const [silenceProgress, setSilenceProgress] = useState(100);
+
   // Scorecard tabs: 'summary' | 'transcript' | 'skills' | 'plan'
   const [resultTab, setResultTab] = useState('summary');
   const [activeCritiqueId, setActiveCritiqueId] = useState(null);
@@ -42,6 +45,7 @@ export default function AIInterviewer() {
   const videoRef = useRef(null);
   const recognitionRef = useRef(null);
   const silenceTimerRef = useRef(null);
+  const progressIntervalRef = useRef(null);
   const currentIdxRef = useRef(0);
   const answersRef = useRef([]);
 
@@ -97,8 +101,8 @@ export default function AIInterviewer() {
     }
   };
 
-  // 15 Categories of UPSC board questions mapped to active members
-  const questions = [
+  // 15 Categories of UPSC board questions mapped to active members (with fallback static array)
+  const initialQuestions = [
     // Dr. Mathur - Chairperson (Personality/DAF)
     {
       memberId: 'mathur',
@@ -181,7 +185,9 @@ export default function AIInterviewer() {
     }
   ];
 
-  // 15 Conversational transition feedback responses
+  const [questions, setQuestions] = useState(initialQuestions);
+
+  // 15 Fallback transition feedback responses
   const transitionFeedbacks = [
     `Thank you for sharing your background, ${candidateName}. Dr. Mathur is done. Let us discuss your home state.`,
     `Bottlenecks noted. Let us move to your hobbies of ${hobbies}.`,
@@ -190,7 +196,7 @@ export default function AIInterviewer() {
     `Resilience is key in administrative services. Dr. Mathur is done. Let me hand over to Prof. Aruna Swamy for optional subject analysis.`,
     `A solid overview of optional themes. Prof. Swamy is satisfied. Let us discuss cooperative federalism.`,
     `GST council dynamics analyzed. Let us look at local governance devolution.`,
-    `Empowering local panchayats is vital. Let us examine groundwater depletion.`,
+    `Devolving power is vital. Let us examine groundwater depletion.`,
     `Groundwater crop substitution models noted. Let us check technology in welfare auditing.`,
     `Technology integration parameters captured. Prof. Swamy is satisfied. Shri Vijay Raghavan will now ask you logical aptitude and ethics questions.`,
     `Logical audit bypass captured. Now, Shri Vijay Raghavan will present a critical Situation Reaction Test.`,
@@ -203,6 +209,30 @@ export default function AIInterviewer() {
   const activeQuestion = questions[currentIdx] || questions[0];
   const activeMember = boardMembers[activeQuestion.memberId];
 
+  // Progress bar updater for silence detection
+  const startSilenceProgress = (totalDurationMs) => {
+    if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+    
+    setSilenceProgress(100);
+    const intervalMs = 100;
+    const decrement = (intervalMs / totalDurationMs) * 100;
+
+    progressIntervalRef.current = setInterval(() => {
+      setSilenceProgress((prev) => {
+        if (prev <= 0) {
+          clearInterval(progressIntervalRef.current);
+          return 0;
+        }
+        return prev - decrement;
+      });
+    }, intervalMs);
+  };
+
+  const stopSilenceProgress = () => {
+    if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+    setSilenceProgress(100);
+  };
+
   // Initialize Speech Recognition
   useEffect(() => {
     if (SpeechRecognitionClass) {
@@ -213,6 +243,7 @@ export default function AIInterviewer() {
 
       rec.onstart = () => {
         setIsListening(true);
+        startSilenceProgress(5000); // 5 seconds default threshold
       };
 
       rec.onresult = (event) => {
@@ -224,20 +255,24 @@ export default function AIInterviewer() {
         
         setUserTranscript(fullTranscript);
         
-        // Silence detection: proceed automatically on 2.2s of silence
+        // Reset the silence countdown bar on active speech detection!
+        startSilenceProgress(5000);
+
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
         silenceTimerRef.current = setTimeout(() => {
           autoSubmitResponse(fullTranscript);
-        }, 2200);
+        }, 5000); // 5.0 seconds of silence gives ample time to think and breathe
       };
 
       rec.onend = () => {
         setIsListening(false);
+        stopSilenceProgress();
       };
 
       rec.onerror = (e) => {
         console.warn('Recognition error:', e.error);
         setIsListening(false);
+        stopSilenceProgress();
       };
 
       recognitionRef.current = rec;
@@ -247,6 +282,7 @@ export default function AIInterviewer() {
       stopMedia();
       window.speechSynthesis.cancel();
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
     };
   }, [optionalSubject, step]);
 
@@ -344,10 +380,11 @@ export default function AIInterviewer() {
       recognitionRef.current.stop();
     }
     setIsListening(false);
+    stopSilenceProgress();
   };
 
   // Process response and trigger transition voice feedbacks
-  const autoSubmitResponse = (textToSubmit) => {
+  const autoSubmitResponse = async (textToSubmit) => {
     stopListeningAndSubmit();
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     
@@ -355,39 +392,95 @@ export default function AIInterviewer() {
     if (!finalAnswer) return;
 
     setUserTranscript('');
+    setEvaluating(true);
 
-    setAnswers((prevAnswers) => {
-      const nextAnswers = [...prevAnswers, finalAnswer];
-      const activeIdx = currentIdxRef.current;
+    const activeIdx = currentIdxRef.current;
+    const nextAnswers = [...answers, finalAnswer];
+    setAnswers(nextAnswers);
 
-      // Speak transitional feedback using active board member
-      const feedbackText = transitionFeedbacks[activeIdx];
-      setAiText(feedbackText);
+    let transitionText = '';
+    let followUpQuestionText = '';
+    let followUpFocus = '';
 
-      // Chairperson Mathur does transitions, except Raghavan handles water/SRT/logic
-      let transitionSpeakerId = 'mathur';
-      if (activeIdx >= 10 && activeIdx <= 13) {
-        transitionSpeakerId = 'raghavan';
-      }
+    // Take question from answer: request dynamic follow-up from the backend AI
+    try {
+      const activeMember = boardMembers[activeQuestion.memberId] || boardMembers.mathur;
+      const prompt = `You are a UPSC board member named ${activeMember.name} (Role: ${activeMember.role}, Specialty: ${activeMember.specialty}).
+The candidate (${candidateName}, Optional: ${optionalSubject}, State: ${stateName}, Degree: ${academicDegree}) just responded to the board query: "${activeQuestion.text}".
+Candidate's spoken response was: "${finalAnswer}".
 
-      speakWithMemberVoice(feedbackText, transitionSpeakerId, () => {
-        if (activeIdx < questions.length - 1) {
-          const nextIdx = activeIdx + 1;
-          setCurrentIdx(nextIdx);
-          triggerAiQuestion(nextIdx);
-        } else {
-          // Finish session, load Mercor scorecard
-          setEvaluating(true);
-          stopMedia();
-          setTimeout(() => {
-            setEvaluating(false);
-            setStep('result');
-            setResultTab('summary');
-          }, 2400);
-        }
+Formulate a highly challenging and contextual follow-up question based DIRECTLY on the themes/words in their response. Do not use generic boilerplate.
+Format your output exactly as:
+TRANSITION: [Your 1-sentence analytical transition critique or acknowledgement]
+QUESTION: [Your dynamic follow-up question derived from their answer text]
+FOCUS: [Focus area label]`;
+
+      const response = await api.post('/ai/chat', {
+        messages: [{ role: 'user', content: prompt }]
       });
 
-      return nextAnswers;
+      const reply = response.data?.reply || '';
+      
+      const transitionMatch = reply.match(/TRANSITION:\s*(.*)/i);
+      const questionMatch = reply.match(/QUESTION:\s*(.*)/i);
+      const focusMatch = reply.match(/FOCUS:\s*(.*)/i);
+
+      transitionText = transitionMatch ? transitionMatch[1].trim() : '';
+      followUpQuestionText = questionMatch ? questionMatch[1].trim() : '';
+      followUpFocus = focusMatch ? focusMatch[1].trim() : '';
+
+      transitionText = transitionText.replace(/^\[|\]$/g, '');
+      followUpQuestionText = followUpQuestionText.replace(/^\[|\]$/g, '');
+      followUpFocus = followUpFocus.replace(/^\[|\]$/g, '');
+      
+    } catch (err) {
+      console.warn('AI fallback triggered:', err);
+    }
+
+    setEvaluating(false);
+
+    // Dynamic fallback if API fails
+    if (!transitionText || !followUpQuestionText) {
+      transitionText = transitionFeedbacks[activeIdx] || 'Thank you for your response. Let us proceed.';
+      if (activeIdx < questions.length - 1) {
+        followUpQuestionText = initialQuestions[activeIdx + 1].text;
+        followUpFocus = initialQuestions[activeIdx + 1].focus;
+      }
+    }
+
+    setAiText(transitionText);
+
+    // Speak transition feedback first
+    const speakerId = activeQuestion.memberId;
+    speakWithMemberVoice(transitionText, speakerId, () => {
+      // Once transition is complete, check if we are below 15 questions
+      if (activeIdx < 14) {
+        const nextIdx = activeIdx + 1;
+        setCurrentIdx(nextIdx);
+        
+        // Dynamically insert follow-up question
+        const updatedQuestions = [...questions];
+        updatedQuestions[nextIdx] = {
+          memberId: initialQuestions[nextIdx]?.memberId || (nextIdx % 3 === 0 ? 'mathur' : nextIdx % 3 === 1 ? 'swamy' : 'raghavan'),
+          focus: followUpFocus || initialQuestions[nextIdx]?.focus || 'Follow-up query',
+          text: followUpQuestionText
+        };
+        setQuestions(updatedQuestions);
+
+        setAiText(followUpQuestionText);
+        speakWithMemberVoice(followUpQuestionText, updatedQuestions[nextIdx].memberId, () => {
+          startMicListening();
+        });
+      } else {
+        // Finished 15 questions, go to scorecard
+        setEvaluating(true);
+        stopMedia();
+        setTimeout(() => {
+          setEvaluating(false);
+          setStep('result');
+          setResultTab('summary');
+        }, 2000);
+      }
     });
   };
 
@@ -736,13 +829,36 @@ export default function AIInterviewer() {
             background: 'var(--surface2)', border: '1px solid var(--border)',
             borderRadius: 16, padding: '20px', display: 'flex', flexDirection: 'column', gap: 14
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{
-                fontSize: 18, color: isListening ? 'var(--red)' : 'var(--text3)'
-              }}>🎙️</span>
-              <span style={{ fontSize: 11, fontWeight: 600, color: isListening ? 'var(--text)' : 'var(--text3)' }}>
-                {isListening ? 'Speech Recognition Active... Speak now (Will auto-submit on 2.2s silence)' : 'Ready to record. Click "Speak Answer" to start.'}
-              </span>
+            
+            {/* Real-time speech status and countdown progress bar */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{
+                    fontSize: 18, color: isListening ? 'var(--red)' : 'var(--text3)'
+                  }}>🎙️</span>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: isListening ? 'var(--text)' : 'var(--text3)' }}>
+                    {isListening ? 'Speech Recognition Active... Speak now' : 'Ready to record. Click "Speak Answer" to start.'}
+                  </span>
+                </div>
+                {isListening && (
+                  <span style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 500 }}>
+                    Auto-submitting after 5s of silence
+                  </span>
+                )}
+              </div>
+              
+              {/* Silence Progress Bar visual feedback */}
+              {isListening && (
+                <div style={{ height: 4, background: 'var(--surface)', borderRadius: 2, overflow: 'hidden', width: '100%' }}>
+                  <div style={{
+                    height: '100%',
+                    background: silenceProgress < 30 ? 'var(--red)' : silenceProgress < 60 ? 'var(--amber)' : 'var(--purple)',
+                    width: `${silenceProgress}%`,
+                    transition: 'width 0.1s linear, background-color 0.2s'
+                  }} />
+                </div>
+              )}
             </div>
 
             <textarea
@@ -774,14 +890,15 @@ export default function AIInterviewer() {
 
               <button
                 onClick={handleNextStep}
-                disabled={!userTranscript.trim()}
+                disabled={!userTranscript.trim() || evaluating}
                 style={{
                   background: 'var(--purple)', border: 'none', borderRadius: 10,
                   padding: '8px 24px', fontSize: 12, fontWeight: 700, color: '#fff',
-                  opacity: userTranscript.trim() ? 1 : 0.4, cursor: 'pointer'
+                  opacity: (userTranscript.trim() && !evaluating) ? 1 : 0.4, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 6
                 }}
               >
-                {currentIdx < questions.length - 1 ? 'Next Question →' : 'Finish & Compile Scorecard'}
+                {evaluating ? 'Thinking...' : currentIdx < questions.length - 1 ? 'Next Question →' : 'Finish & Compile Scorecard'}
               </button>
             </div>
           </div>
